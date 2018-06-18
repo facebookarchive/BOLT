@@ -1,0 +1,40 @@
+add_llvm_library(LLVMBOLTPasses
+  Aligner.cpp
+  AllocCombiner.cpp
+  BinaryPasses.cpp
+  BinaryFunctionCallGraph.cpp
+  CallGraph.cpp
+  CallGraphWalker.cpp
+  CachePlusReorderAlgorithm.cpp
+  DataflowAnalysis.cpp
+  DataflowInfoManager.cpp
+  FrameAnalysis.cpp
+  FrameOptimizer.cpp
+  HFSort.cpp
+  HFSortPlus.cpp
+  IdenticalCodeFolding.cpp
+  IndirectCallPromotion.cpp
+  Inliner.cpp
+  JTFootprintReduction.cpp
+  LivenessAnalysis.cpp
+  LongJmp.cpp
+  MCF.cpp
+  PettisAndHansen.cpp
+  PLTCall.cpp
+  RegAnalysis.cpp
+  RegReAssign.cpp
+  ReorderAlgorithm.cpp
+  ReorderFunctions.cpp
+  ReorderData.cpp
+  ShrinkWrapping.cpp
+  StackAllocationAnalysis.cpp
+  StackAvailableExpressions.cpp
+  StackPointerTracking.cpp
+  StackReachingUses.cpp
+  StokeInfo.cpp
+
+  DEPENDS
+  intrinsics_gen
+  )
+
+include_directories( ${LLVM_MAIN_SRC_DIR}/tools/llvm-bolt/src )
