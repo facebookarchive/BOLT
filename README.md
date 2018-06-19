@@ -22,7 +22,8 @@ Start with cloning LLVM and BOLT repos:
 > cd llvm/tools
 > git checkout -b llvm-bolt f137ed238db11440f03083b1c88b7ffc0f4af65e
 > git clone https://github.com/facebookincubator/BOLT llvm-bolt
-> patch -p 1 < llvm-bolt/llvm.patch
+> cd ..
+> patch -p 1 < tools/llvm-bolt/llvm.patch
 ```
 
 Proceed to a normal LLVM build:
@@ -31,7 +32,7 @@ Proceed to a normal LLVM build:
 > cd ../..
 > mkdir build
 > cd build
-> cmake -G Ninja
+> cmake -G Ninja ..
 > ninja
 ```
 
