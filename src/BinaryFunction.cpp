@@ -988,6 +988,8 @@ void BinaryFunction::disassemble(ArrayRef<uint8_t> FunctionData) {
       }
     }
 
+    BinaryData *BD = nullptr;
+
     // Note that the address does not necessarily have to reside inside
     // a section, it could be an absolute address too.
     auto Section = BC.getSectionForAddress(TargetAddress);
@@ -1003,11 +1005,18 @@ void BinaryFunction::disassemble(ArrayRef<uint8_t> FunctionData) {
           return addEntryPointAtOffset(TargetAddress - getAddress());
         }
       } else {
-        BC.InterproceduralReferences.insert(TargetAddress);
+        // Check for .data in .text section used in plain assembly code
+        BD = BC.getBinaryDataContainingAddress(TargetAddress);
+        if (BD && BC.DataInTextPointers.find(BD) == BC.DataInTextPointers.end()) {
+          BC.InterproceduralReferences.insert(TargetAddress);
+        }
       }
     }
 
-    auto *BD = BC.getBinaryDataContainingAddress(TargetAddress);
+    if (!BD) {
+      BD = BC.getBinaryDataContainingAddress(TargetAddress);
+    }
+
     if (BD) {
       auto *TargetSymbol = BD->getSymbol();
       SymbolAddend = TargetAddress - BD->getAddress();
@@ -1020,6 +1029,9 @@ void BinaryFunction::disassemble(ArrayRef<uint8_t> FunctionData) {
       dbgs() << "Created DATAat sym: " << TargetSymbol->getName()
              << " in section " << BD->getSectionName() << "\n";
     });
+    // Get pointer of created symbol and add it to exclusion set
+    BD = BC.getBinaryDataContainingAddress(TargetAddress);
+    BC.DataInTextPointers.insert(BD);
     return TargetSymbol;
   };
 
