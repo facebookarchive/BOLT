@@ -6,8 +6,7 @@ execution profile gathered by sampling profiler, such as Linux `perf` tool.
 BOLT can operate on any binary with a symbol table, but for maximum gains
 it utilizes relocations saved by a linker (`--emit-relocs`).
 
-NOTE: current support is limited to non-PIC/non-PIE X86-64 and AArch64 ELF
-binaries.
+NOTE: current support is limited to non-PIE X86-64 and AArch64 ELF binaries.
 
 ## INSTALLATION
 
@@ -87,6 +86,11 @@ in the profile, you can either run the `sleep` command for longer, and/or use
 Note that for profile collection we recommend using cycle events and not
 `BR_INST_RETIRED.*`. Empirically we found it to produce better results.
 
+If collection of a profile with branches is not available, e.g. when you run on
+a VM or on a hardware that does not support it, then you can use only sample
+events, such as cycles. In this case, the quality of the profile information
+would not be as good, and performance gains with BOLT are expected to be lower.
+
 ### Step 2: Convert Profile to BOLT Format
 
 NOTE: you can skip this step and feed `perf.data` directly to BOLT using
@@ -104,6 +108,9 @@ $ perf2bolt -p perf.data -o perf.fdata <executable>
 
 This command will aggregate branch data from `perf.data` and store it in a
 format that is both more compact and more resilient to binary modifications.
+
+If the profile was collected without LBRs, you will need to add `-nl` flag to
+the command line above.
 
 ### Step 3: Optimize with BOLT
 
