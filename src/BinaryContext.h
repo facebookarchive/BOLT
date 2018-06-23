@@ -207,6 +207,10 @@ public:
   /// when a function has more than a single entry point.
   std::set<uint64_t> InterproceduralReferences;
 
+  /// Set of pointers to .data segments found in .text section
+  /// This is workaround for plain assembly segments(e.g OpenSSL crypto functions)
+  std::set<BinaryData *> DataInTextPointers;
+
   std::unique_ptr<MCContext> Ctx;
 
   std::unique_ptr<DWARFContext> DwCtx;
