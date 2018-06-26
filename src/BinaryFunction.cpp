@@ -1017,8 +1017,9 @@ void BinaryFunction::disassemble(ArrayRef<uint8_t> FunctionData) {
     auto *TargetSymbol =
         BC.getOrCreateGlobalSymbol(TargetAddress, 0, 0, "DATAat");
     DEBUG(if (opts::Verbosity >= 2) {
+      auto SectionNameAux = DB ? BD->getSectionName() : "";
       dbgs() << "Created DATAat sym: " << TargetSymbol->getName()
-             << " in section " << BD->getSectionName() << "\n";
+             << " in section " << SectionNameAux << "\n";
     });
     return TargetSymbol;
   };
