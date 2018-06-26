@@ -892,25 +892,34 @@ BinaryContext::getFunctionData(const BinaryFunction &Function) const {
   return ArrayRef<uint8_t>(Bytes + FunctionOffset, Function.getSize());
 }
 
-ErrorOr<BinarySection&> BinaryContext::getSectionForAddress(uint64_t Address) {
+template <typename T>
+static ErrorOr<T>
+getSectionForAddress(const BinaryContext::AddressToSectionMapType&
+                     AddressToSection, uint64_t Address) {
   auto SI = AddressToSection.upper_bound(Address);
   if (SI != AddressToSection.begin()) {
+    auto OSI = SI;
     --SI;
-    if (SI->first + SI->second->getSize() > Address)
-      return *SI->second;
+    if (SI->first + SI->second->getSize() > Address ||
+        // Or if address is at the end boundary of SI, but not touching the
+        // next section area.
+        (SI->first + SI->second->getSize() == Address &&
+         OSI != AddressToSection.end() && Address < OSI->first)) {
+      T ref = *SI->second;
+      return ref;
+    }
   }
   return std::make_error_code(std::errc::bad_address);
 }
 
+ErrorOr<BinarySection &> BinaryContext::getSectionForAddress(uint64_t Address) {
+  return ::getSectionForAddress<BinarySection&>(AddressToSection, Address);
+}
+
 ErrorOr<const BinarySection &>
 BinaryContext::getSectionForAddress(uint64_t Address) const {
-  auto SI = AddressToSection.upper_bound(Address);
-  if (SI != AddressToSection.begin()) {
-    --SI;
-    if (SI->first + SI->second->getSize() > Address)
-      return *SI->second;
-  }
-  return std::make_error_code(std::errc::bad_address);
+  return ::getSectionForAddress<const BinarySection&>(
+      AddressToSection, Address);
 }
 
 ErrorOr<StringRef>
