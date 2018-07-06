@@ -25,7 +25,8 @@ Start with cloning LLVM and BOLT repos:
 > patch -p 1 < tools/llvm-bolt/llvm.patch
 ```
 
-Proceed to a normal LLVM build:
+Proceed to a normal LLVM build using a compiler with C++11 support (for GCC
+use version 4.9 or later):
 
 ```
 > cd ..
@@ -57,6 +58,9 @@ This step is different for different kinds of executables. If you can invoke
 your program to run on a representative input from a command line, then check
 **For Applications** section below. If your programs typically runs as a
 server/service, then skip to **For Services** section.
+
+The version of `perf` command used for the following steps has to support
+`-F brstack` option. We recommend using `perf` version 4.5 or later.
 
 #### For Applications
 
@@ -101,7 +105,7 @@ a copy of the binary that was running. The binary has to be either
 unstripped, or should have a symbol table intact (i.e. running `strip -g` is
 okay).
 
-Execute `perf2bolt`:
+Make sure `perf` is in your `PATH`, and execute `perf2bolt`:
 ```
 $ perf2bolt -p perf.data -o perf.fdata <executable>
 ```
