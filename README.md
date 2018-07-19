@@ -4,7 +4,9 @@ BOLT is a post-link optimizer developed to speed up large applications.
 It achieves the improvements by optimizing application's code layout based on
 execution profile gathered by sampling profiler, such as Linux `perf` tool.
 BOLT can operate on any binary with a symbol table, but for maximum gains
-it utilizes relocations saved by a linker (`--emit-relocs`).
+it utilizes relocations saved by a linker (`--emit-relocs`). An overview of the
+ideas implemented in BOLT along with a discussion of its potential and current
+results is available in an [arXiv paper](https://arxiv.org/abs/1807.06735).
 
 NOTE: current support is limited to non-PIE X86-64 and AArch64 ELF binaries.
 
