@@ -46,6 +46,8 @@ patches that are not yet upstreamed.
 
 ## USAGE
 
+For a complete practical guide of using BOLT see [Optimizing Clang with BOLT](./docs/OptimizingClang.md).
+
 ### Step 0
 
 In order to allow BOLT to re-arrange functions (in addition to re-arranging
