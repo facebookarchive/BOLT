@@ -36,7 +36,7 @@ encounter any issues.
 ## Installation
 
 BOLT heavily uses LLVM libraries and by design it is built as one of LLVM
-tools. The build process in not much different from a regular LLVM build.
+tools. The build process is not much different from a regular LLVM build.
 The following instructions are assuming that you are running under Linux.
 
 Start with cloning LLVM and BOLT repos:
