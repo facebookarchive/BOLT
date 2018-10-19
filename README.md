@@ -177,3 +177,7 @@ $ merge-fdata *.fdata > combined.fdata
 ```
 Use `combined.fdata` for **Step 3** above to generate a universally optimized
 binary.
+
+## License
+
+BOLT is licensed under [University of Illinois/NCSA Open Source License](./LICENSE.TXT).
