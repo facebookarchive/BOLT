@@ -57,7 +57,7 @@ use version 4.9 or later):
 > cd ..
 > mkdir build
 > cd build
-> cmake -G Ninja ../llvm
+> cmake -G Ninja ../llvm -DLLVM_TARGETS_TO_BUILD="X86;AArch64"
 > ninja
 ```
 
