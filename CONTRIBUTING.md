@@ -21,6 +21,14 @@ We actively welcome your pull requests.
   before it can be merged.
 * When all of the tests are passing and all other conditions described above
   satisfied, the PR is ready for review and merge.
+* If you haven't already, complete the Contributor License Agreement ("CLA").
+
+## Contributor License Agreement ("CLA")
+
+In order to accept your pull request, we need you to submit a CLA. You only need
+to do this once to work on any of Facebook's open source projects.
+
+Complete your CLA here: <https://code.facebook.com/cla>
 
 ## Issues
 
