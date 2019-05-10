@@ -1211,7 +1211,9 @@ void AssignSections::runOnFunctions(BinaryContext &BC) {
       continue;
     }
 
-    if (!UseColdSection ||
+    if (Function.getSection().isProtected())
+      Function.setCodeSectionName(Function.getSection().getName());
+    else if (!UseColdSection ||
         Function.hasValidIndex() ||
         Function.hasValidProfile()) {
       Function.setCodeSectionName(BC.getMainCodeSectionName());

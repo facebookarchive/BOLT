@@ -47,6 +47,7 @@ class BinarySection {
   unsigned ELFType;           // ELF section type
   unsigned ELFFlags;          // ELF section flags
   bool IsLocal;               // Is this a local section?
+  bool IsProtected;	      // Is this section unsafe to optimize?
 
   // Relocations associated with this section.  Relocation offsets are
   // wrt. to the original section address and size.
@@ -137,6 +138,7 @@ public:
       ELFType(Section.getELFType()),
       ELFFlags(Section.getELFFlags()),
       IsLocal(IsLocal || StringRef(Name).startswith(".local.")),
+      IsProtected(false),
       Relocations(Section.Relocations),
       PendingRelocations(Section.PendingRelocations),
       OutputName(Name) {
@@ -155,6 +157,7 @@ public:
       ELFType(ELFSectionRef(Section).getType()),
       ELFFlags(ELFSectionRef(Section).getFlags()),
       IsLocal(IsLocal || StringRef(Name).startswith(".local.")),
+      IsProtected(false),
       OutputName(Name) {
   }
 
@@ -176,6 +179,7 @@ public:
       ELFType(ELFType),
       ELFFlags(ELFFlags),
       IsLocal(IsLocal || Name.startswith(".local.")),
+      IsProtected(false),
       IsFinalized(true),
       OutputName(Name),
       OutputSize(Size),
@@ -266,6 +270,7 @@ public:
     return (ELFFlags & ELF::SHF_ALLOC) && !isTBSS();
   }
   bool isLocal() const { return IsLocal; }
+  bool isProtected() const { return IsProtected; }
   bool isReordered() const { return IsReordered; }
   bool isAnonymous() const { return IsAnonymous; }
   unsigned getELFType() const { return ELFType; }
@@ -408,6 +413,10 @@ public:
   void setAnonymous(bool Flag) {
     IsAnonymous = Flag;
   }
+  void setProtected(bool Flag) {
+    IsProtected = Flag;
+  }
+
 
   /// Reorder the contents of this section according to /p Order.  If
   /// /p Inplace is true, the entire contents of the section is reordered,

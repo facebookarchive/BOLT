@@ -415,6 +415,10 @@ bool isHotTextMover(const BinaryFunction &Function) {
 // Check against lists of functions from options if we should
 // optimize the function with a given name.
 bool shouldProcess(const BinaryFunction &Function) {
+  if (Function.getSection().isProtected()) {
+    DEBUG(dbgs() << "BOLT-DEBUG: " << Function << "No processed as section protected!!\n");
+    return false;
+  }
   if (opts::MaxFunctions &&
       Function.getFunctionNumber() >= opts::MaxFunctions) {
     if (Function.getFunctionNumber() == opts::MaxFunctions) {
@@ -513,6 +517,8 @@ MCPlusBuilder *createMCPlusBuilder(const Triple::ArchType Arch,
 
 constexpr const char *RewriteInstance::SectionsToOverwrite[];
 constexpr const char *RewriteInstance::DebugSectionsToOverwrite[];
+constexpr const char *RewriteInstance::SectionBeginMarkersPrefix[];
+constexpr const char *RewriteInstance::SectionEndMarkersPrefix[];
 
 const std::string RewriteInstance::OrgSecPrefix = ".bolt.org";
 
@@ -744,7 +750,8 @@ void RewriteInstance::reset() {
 
 bool RewriteInstance::shouldDisassemble(BinaryFunction &BF) const {
   // If we have to relocate the code we have to disassemble all functions.
-  if (!BF.getBinaryContext().HasRelocations && !opts::shouldProcess(BF)) {
+  if ((!BF.getBinaryContext().HasRelocations
+      || BF.getSection().isProtected()) && !opts::shouldProcess(BF)) {
     DEBUG(dbgs() << "BOLT: skipping processing function " << BF
                  << " per user request.\n");
     return false;
@@ -1267,6 +1274,22 @@ void RewriteInstance::discoverFileObjects() {
       continue;
     }
 
+    auto isSectionMarker = [&]() {
+      if (SymbolSize)
+        return false;
+      for (auto &prefix : SectionBeginMarkersPrefix) {
+        if (SymName.startswith(prefix)
+           && Section->getAddress() == Address)
+          return true;
+      }
+      for (auto &prefix : SectionEndMarkersPrefix) {
+        if (SymName.startswith(prefix)
+            && Section->getAddress() + Section->getSize() == Address)
+            return true;
+      }
+      return false;
+    };
+
     // Assembly functions could be ST_NONE with 0 size. Check that the
     // corresponding section is a code section and they are not inside any
     // other known function to consider them.
@@ -1275,7 +1298,11 @@ void RewriteInstance::discoverFileObjects() {
     // their local labels. The only way to tell them apart is to look at
     // symbol scope - global vs local.
     if (cantFail(Symbol.getType()) != SymbolRef::ST_Function) {
-      if (PreviousFunction) {
+      if (isSectionMarker()) {
+        DEBUG(dbgs() << "BOLT-DEBUG: symbol is a section marker, skipping\n");
+        registerName(SymbolSize);
+        continue;
+      } else if (PreviousFunction) {
         if (PreviousFunction->getSize() == 0) {
           if (PreviousFunction->isSymbolValidInScope(Symbol, SymbolSize)) {
             DEBUG(dbgs() << "BOLT-DEBUG: symbol is a function local symbol\n");
@@ -1730,11 +1757,15 @@ void RewriteInstance::readSpecialSections() {
 
     // Only register sections with names.
     if (!SectionName.empty()) {
-      BC->registerSection(Section);
+      auto &BSection = BC->registerSection(Section);
       DEBUG(dbgs() << "BOLT-DEBUG: registering section " << SectionName
                    << " @ 0x" << Twine::utohexstr(Section.getAddress()) << ":0x"
                    << Twine::utohexstr(Section.getAddress() + Section.getSize())
                    << "\n");
+      if (!SectionName.startswith(".")) {
+        DEBUG(dbgs() << "BOLT-DEBUG: custom section detected, protect content\n");
+        BSection.setProtected(true);
+      }
       if (isDebugSection(SectionName))
         HasDebugInfo = true;
     }
@@ -2955,7 +2986,7 @@ void RewriteInstance::emitSections() {
 void RewriteInstance::emitFunctions(MCStreamer *Streamer) {
   auto emit = [&](const std::vector<BinaryFunction *> &Functions) {
     for (auto *Function : Functions) {
-      if (!BC->HasRelocations &&
+      if ((!BC->HasRelocations || Function->getSection().isProtected()) &&
           (!Function->isSimple() || !opts::shouldProcess(*Function)))
         continue;
 
@@ -4076,7 +4107,7 @@ void RewriteInstance::patchELFSymTabs(ELFObjectFile<ELFT> *File) {
       // function emitted in the section. Dismiss if it is a section symbol.
       if (Function &&
           !Function->getPLTSymbol() &&
-          NewSymbol.getType() != ELF::STT_SECTION) {
+          NewSymbol.getType() != ELF::STT_SECTION && NewSymbol.st_size) {
         NewSymbol.st_value = Function->getOutputAddress();
         NewSymbol.st_size = Function->getOutputSize();
         NewSymbol.st_shndx = Function->getCodeSection()->getIndex();
