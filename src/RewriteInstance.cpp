@@ -354,6 +354,12 @@ TrapOldCode("trap-old-code",
   cl::Hidden,
   cl::cat(BoltCategory));
 
+static cl::opt<bool>
+ProtectCustomSections("protect-custom-sections",
+  cl::desc("don't optimize section with __start_/__stop_ markers"),
+  cl::ZeroOrMore,
+  cl::cat(BoltCategory));
+
 cl::opt<bool>
 UpdateDebugSections("update-debug-sections",
   cl::desc("update DWARF debug sections of the executable"),
@@ -757,13 +763,11 @@ void RewriteInstance::reset() {
 
 bool RewriteInstance::shouldDisassemble(BinaryFunction &BF) const {
   // If we have to relocate the code we have to disassemble all functions.
-  if ((!BF.getBinaryContext().HasRelocations
-      || BF.getSection().isProtected()) && !opts::shouldProcess(BF)) {
+  if ((!BF.getBinaryContext().HasRelocations) && !opts::shouldProcess(BF)) {
     DEBUG(dbgs() << "BOLT: skipping processing function " << BF
                  << " per user request.\n");
     return false;
   }
-
   if (opts::AggregateOnly && !BF.hasProfileAvailable())
     return false;
 
@@ -1342,15 +1346,15 @@ void RewriteInstance::discoverFileObjects() {
     auto isSectionMarker = [&]() {
       if (SymbolSize)
         return false;
-      for (auto &prefix : SectionBeginMarkersPrefix) {
-        if (SymName.startswith(prefix)
-           && Section->getAddress() == Address)
+      for (auto &Prefix : SectionBeginMarkersPrefix) {
+        if (SymName.startswith(Prefix) &&
+            Section->getAddress() == Address)
           return true;
       }
-      for (auto &prefix : SectionEndMarkersPrefix) {
-        if (SymName.startswith(prefix)
-            && Section->getAddress() + Section->getSize() == Address)
-            return true;
+      for (auto &Prefix : SectionEndMarkersPrefix) {
+        if (SymName.startswith(Prefix) &&
+            Section->getAddress() + Section->getSize() == Address)
+          return true;
       }
       return false;
     };
@@ -1363,7 +1367,12 @@ void RewriteInstance::discoverFileObjects() {
     // their local labels. The only way to tell them apart is to look at
     // symbol scope - global vs local.
     if (cantFail(Symbol.getType()) != SymbolRef::ST_Function) {
-      if (isSectionMarker()) {
+      if (opts::ProtectCustomSections && isSectionMarker()) {
+        auto BSection = BC->getSectionForAddress(Section->getAddress());
+        if (!BSection.getError() && !BSection->isProtected()) {
+          outs() << "BOLT-INFO: Section protected: " << BSection->getName() << "\n";
+          BSection->setProtected(true);
+        }
         DEBUG(dbgs() << "BOLT-DEBUG: symbol is a section marker, skipping\n");
         registerName(SymbolSize);
         continue;
@@ -1822,15 +1831,11 @@ void RewriteInstance::readSpecialSections() {
 
     // Only register sections with names.
     if (!SectionName.empty()) {
-      auto &BSection = BC->registerSection(Section);
+      BC->registerSection(Section);
       DEBUG(dbgs() << "BOLT-DEBUG: registering section " << SectionName
                    << " @ 0x" << Twine::utohexstr(Section.getAddress()) << ":0x"
                    << Twine::utohexstr(Section.getAddress() + Section.getSize())
                    << "\n");
-      if (!SectionName.startswith(".")) {
-        DEBUG(dbgs() << "BOLT-DEBUG: custom section detected, protect content\n");
-        BSection.setProtected(true);
-      }
       if (isDebugSection(SectionName))
         HasDebugInfo = true;
     }
@@ -1991,6 +1996,11 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
   if (!Relocation::isSupported(RType))
     return false;
 
+  auto Section = cantFail(Rel.getSymbol()->getSection());
+  auto BSection = BC->getSectionForAddress(Section->getAddress());
+  if (!BSection.getError() && BSection->isProtected())
+    return false;
+
   const bool IsAArch64 = BC->isAArch64();
 
   const auto RelSize = Relocation::getSizeForType(RType);
@@ -2119,8 +2129,13 @@ void RewriteInstance::readRelocations(const SectionRef &Section) {
   const bool SkipRelocs = StringSwitch<bool>(RelocatedSectionName)
     .Cases(".plt", ".rela.plt", ".got.plt", ".eh_frame", true)
     .Default(false);
+  auto BRelocSection = BC->getSectionForAddress(RelocatedSection.getAddress());
+  if ((!BRelocSection.getError()) &&
+      BRelocSection->isProtected())
+    DEBUG(dbgs() << "BOLT-DEBUG: ignoring relocations as protected section " << SectionName << "\n");
+    return;
   if (SkipRelocs) {
-    DEBUG(dbgs() << "BOLT-DEBUG: ignoring relocations against known section\n");
+    DEBUG(dbgs() << "BOLT-DEBUG: ignoring relocations against known section " << SectionName << "\n");
     return;
   }
 
@@ -3055,7 +3070,7 @@ void RewriteInstance::emitSections() {
 void RewriteInstance::emitFunctions(MCStreamer *Streamer) {
   auto emit = [&](const std::vector<BinaryFunction *> &Functions) {
     for (auto *Function : Functions) {
-      if ((!BC->HasRelocations || Function->getSection().isProtected()) &&
+      if ((!BC->HasRelocations) &&
           (!Function->isSimple() || !opts::shouldProcess(*Function)))
         continue;
 
@@ -3143,6 +3158,10 @@ void RewriteInstance::mapCodeSections(orc::VModuleKey Key) {
     // Allocate sections starting at a given Address.
     auto allocateAt = [&](uint64_t Address) {
       for (auto *Section : CodeSections) {
+        if (Section->isProtected()) {
+          Section->setOutputAddress(Section->getAddress());
+          continue;
+        }
         Address = alignTo(Address, Section->getAlignment());
         Section->setOutputAddress(Address);
         Address += Section->getOutputSize();
@@ -3872,7 +3891,11 @@ std::string RewriteInstance::getOutputSectionName(const ELFObjType *Obj,
   StringRef SectionName =
       cantFail(Obj->getSectionName(&Section), "cannot get section name");
 
-  if ((Section.sh_flags & ELF::SHF_ALLOC) && willOverwriteSection(SectionName))
+  auto BSection = BC->getUniqueSectionByName(SectionName);
+
+  if ((Section.sh_flags & ELF::SHF_ALLOC) && willOverwriteSection(SectionName) &&
+      (BSection.getError() ||
+      !BSection->isProtected()))
     return OrgSecPrefix + SectionName.str();
 
   return SectionName;
