@@ -49,6 +49,16 @@ class BinarySection {
   bool IsLocal;               // Is this a local section?
   bool IsProtected;	      // Is this section unsafe to optimize?
 
+  /// Marker of section's begin prefix (to detect custom sections)
+  static constexpr const char *SectionBeginMarkersPrefix[] = {
+    "__start_",
+  };
+
+  /// Marker of section's end prefix (to detect custom sections)
+  static constexpr const char *SectionEndMarkersPrefix[] = {
+    "__stop_",
+  };
+
   // Relocations associated with this section.  Relocation offsets are
   // wrt. to the original section address and size.
   using RelocationSetType = std::set<Relocation>;
@@ -275,6 +285,9 @@ public:
   bool isAnonymous() const { return IsAnonymous; }
   unsigned getELFType() const { return ELFType; }
   unsigned getELFFlags() const { return ELFFlags; }
+
+  /// Check if a symbol is a marker of begin/end section
+  bool isSectionMarker(StringRef SymName, uint64_t SymAddress, uint64_t SymSize);
 
   uint8_t *getData() {
     return reinterpret_cast<uint8_t *>(const_cast<char *>(getContents().data()));

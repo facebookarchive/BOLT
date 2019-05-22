@@ -23,6 +23,9 @@ namespace opts {
 extern cl::opt<bool> PrintRelocations;
 }
 
+constexpr const char *BinarySection::SectionBeginMarkersPrefix[];
+constexpr const char *BinarySection::SectionEndMarkersPrefix[];
+
 uint64_t
 BinarySection::hash(const BinaryData &BD,
                     std::map<const BinaryData *, uint64_t> &Cache) const {
@@ -159,4 +162,20 @@ void BinarySection::reorderContents(const std::vector<BinaryData *> &Order,
   auto *NewData = reinterpret_cast<char *>(copyByteArray(OS.str()));
   Contents = OutputContents = StringRef(NewData, OS.str().size());
   OutputSize = Contents.size();
+}
+
+bool BinarySection::isSectionMarker(StringRef SymName, uint64_t SymAddress, uint64_t SymSize) {
+  if (SymSize)
+    return false;
+  for (auto &Prefix : SectionBeginMarkersPrefix) {
+    if (SymName.startswith(Prefix) &&
+        getAddress() == SymAddress)
+      return true;
+  }
+  for (auto &Prefix : SectionEndMarkersPrefix) {
+    if (SymName.startswith(Prefix) &&
+        getAddress() + getSize() == SymAddress)
+      return true;
+  }
+  return false;
 }
