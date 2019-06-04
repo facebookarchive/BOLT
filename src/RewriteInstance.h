@@ -290,16 +290,6 @@ public:
     ".gdb_index",
   };
 
-   /// Marker of section's begin prefix (to detect custom sections)
-  static constexpr const char *SectionBeginMarkersPrefix[] = {
-    "__start_",
-  };
-
-   /// Marker of section's end prefix (to detect custom sections)
-  static constexpr const char *SectionEndMarkersPrefix[] = {
-    "__stop_",
-  };
-
   /// Return true if the section holds debug information.
   static bool isDebugSection(StringRef SectionName);
 

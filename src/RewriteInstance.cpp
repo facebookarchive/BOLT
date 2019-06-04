@@ -539,8 +539,6 @@ MCPlusBuilder *createMCPlusBuilder(const Triple::ArchType Arch,
 
 constexpr const char *RewriteInstance::SectionsToOverwrite[];
 constexpr const char *RewriteInstance::DebugSectionsToOverwrite[];
-constexpr const char *RewriteInstance::SectionBeginMarkersPrefix[];
-constexpr const char *RewriteInstance::SectionEndMarkersPrefix[];
 
 const std::string RewriteInstance::OrgSecPrefix = ".bolt.org";
 
@@ -3920,11 +3918,7 @@ std::string RewriteInstance::getOutputSectionName(const ELFObjType *Obj,
   StringRef SectionName =
       cantFail(Obj->getSectionName(&Section), "cannot get section name");
 
-  auto BSection = BC->getUniqueSectionByName(SectionName);
-
-  if ((Section.sh_flags & ELF::SHF_ALLOC) && willOverwriteSection(SectionName) &&
-      (BSection.getError() ||
-      !BSection->isProtected()))
+  if ((Section.sh_flags & ELF::SHF_ALLOC) && willOverwriteSection(SectionName))
     return OrgSecPrefix + SectionName.str();
 
   return SectionName;
