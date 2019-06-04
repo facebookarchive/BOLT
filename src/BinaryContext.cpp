@@ -1176,7 +1176,6 @@ BinarySection &BinaryContext::registerOrUpdateSection(StringRef Name,
     assert(std::next(NamedSections.begin()) == NamedSections.end() &&
            "can only update unique sections");
     auto *Section = NamedSections.begin()->second;
-
     DEBUG(dbgs() << "BOLT-DEBUG: updating " << *Section << " -> ");
     const auto Flag = Section->isAllocatable();
     Section->update(Data, Size, Alignment, ELFType, ELFFlags, IsLocal);

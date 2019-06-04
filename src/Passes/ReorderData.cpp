@@ -356,7 +356,9 @@ bool ReorderData::markUnmoveableSymbols(BinaryContext &BC,
   };
   auto Range = BC.getBinaryDataForSection(Section);
   bool FoundUnmoveable = false;
+  auto ProtectedSection = Section.isProtected();
   for (auto Itr = Range.begin(); Itr != Range.end(); ++Itr) {
+    Itr->second->setIsMoveable(Itr->second->isMoveable() && !ProtectedSection);
     if (Itr->second->getName().startswith("PG.")) {
       auto *Prev = Itr != Range.begin() ? std::prev(Itr)->second : nullptr;
       auto *Next = Itr != Range.end() ? std::next(Itr)->second : nullptr;
@@ -409,8 +411,10 @@ void ReorderData::runOnFunctions(BinaryContext &BC) {
     }
 
     auto Section = BC.getUniqueSectionByName(SectionName);
-    if (!Section) {
-      outs() << "BOLT-WARNING: Section " << SectionName << " not found, skipping.\n";
+    if (!Section || Section->isProtected()) {
+      outs() << "BOLT-WARNING: Section "
+             << SectionName
+             << " not found or protected, skipping.\n";
       continue;
     }
 
