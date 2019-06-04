@@ -13,6 +13,7 @@
 #include "Passes/ReorderAlgorithm.h"
 #include "llvm/Support/Options.h"
 #include <numeric>
+#include <vector>
 
 #define DEBUG_TYPE "bolt-opts"
 
@@ -54,6 +55,7 @@ extern cl::OptionCategory BoltOptCategory;
 extern cl::opt<bolt::MacroFusionType> AlignMacroOpFusion;
 extern cl::opt<unsigned> Verbosity;
 extern cl::opt<bool> SplitEH;
+extern cl::opt<bool> EnableBAT;
 extern cl::opt<bolt::BinaryFunction::SplittingType> SplitFunctions;
 extern bool shouldProcess(const bolt::BinaryFunction &Function);
 extern bool isHotTextMover(const bolt::BinaryFunction &Function);
@@ -585,6 +587,9 @@ void FinalizeFunctions::runOnFunctions(BinaryContext &BC) {
 }
 
 void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
+  std::vector<std::pair<MCInst *, uint64_t>> PreservedSDTAnnotations;
+  std::vector<std::pair<MCInst *, uint32_t>> PreservedOffsetAnnotations;
+
   for (auto &It : BC.getBinaryFunctions()) {
     auto &BF = It.second;
     int64_t CurrentGnuArgsSize = 0;
@@ -598,9 +603,12 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
         CurrentGnuArgsSize = 0;
       }
 
-      for (auto II = BB->begin(); II != BB->end(); ++II) {
-        // Convert GnuArgsSize annotations into CFIs.
-        if (BF.usesGnuArgsSize() && BC.MIB->isInvoke(*II)) {
+      // First convert GnuArgsSize annotations into CFIs. This may change instr
+      // pointers, so do it before recording ptrs for preserved annotations
+      if (BF.usesGnuArgsSize()) {
+        for (auto II = BB->begin(); II != BB->end(); ++II) {
+          if (!BC.MIB->isInvoke(*II))
+            continue;
           const auto NewGnuArgsSize = BC.MIB->getGnuArgsSize(*II);
           assert(NewGnuArgsSize >= 0 && "expected non-negative GNU_args_size");
           if (NewGnuArgsSize != CurrentGnuArgsSize) {
@@ -610,6 +618,20 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
             II = std::next(InsertII);
           }
         }
+      }
+
+      // Now record preserved annotations separately and then strip annotations
+      for (auto II = BB->begin(); II != BB->end(); ++II) {
+        if (BC.MIB->hasAnnotation(*II, "SDTMarker")) {
+          PreservedSDTAnnotations.push_back(std::make_pair(
+              &(*II), BC.MIB->getAnnotationAs<uint64_t>(*II, "SDTMarker")));
+        }
+
+        if (opts::EnableBAT && BC.MIB->hasAnnotation(*II, "Offset")) {
+          PreservedOffsetAnnotations.push_back(std::make_pair(
+              &(*II), BC.MIB->getAnnotationAs<uint32_t>(*II, "Offset")));
+        }
+
         BC.MIB->removeAllAnnotations(*II);
       }
     }
@@ -617,6 +639,12 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
 
   // Release all memory taken by annotations.
   BC.MIB->freeAnnotations();
+
+  // Reinsert preserved annotations we need during code emission.
+  for (const auto &Item : PreservedSDTAnnotations)
+    BC.MIB->addAnnotation<uint64_t>(*Item.first, "SDTMarker", Item.second);
+  for (const auto &Item : PreservedOffsetAnnotations)
+    BC.MIB->addAnnotation<uint32_t>(*Item.first, "Offset", Item.second);
 }
 
 namespace {
@@ -1561,8 +1589,6 @@ bool SpecializeMemcpy1::shouldOptimize(const BinaryFunction &Function) const {
 
   for (auto &FunctionSpec : Spec) {
     auto FunctionName = StringRef(FunctionSpec).split(':').first;
-    if (Function.hasName(FunctionName))
-      return true;
     if (Function.hasNameRegex(FunctionName))
       return true;
   }
@@ -1576,8 +1602,6 @@ SpecializeMemcpy1::getCallSitesToOptimize(const BinaryFunction &Function) const{
   for (auto &FunctionSpec : Spec) {
     StringRef FunctionName;
     std::tie(FunctionName, SitesString) = StringRef(FunctionSpec).split(':');
-    if (Function.hasName(FunctionName))
-      break;
     if (Function.hasNameRegex(FunctionName))
       break;
     SitesString = "";
@@ -1651,7 +1675,7 @@ void SpecializeMemcpy1::runOnFunctions(BinaryContext &BC) {
           assert(NextBB && "unexpected call to memcpy() with no return");
         }
 
-        auto *MemcpyBB = Function.addBasicBlock(0);
+        auto *MemcpyBB = Function.addBasicBlock(CurBB->getInputOffset());
         auto CmpJCC = BC.MIB->createCmpJE(BC.MIB->getIntArgRegister(2),
                                           1,
                                           OneByteMemcpyBB->getLabel(),

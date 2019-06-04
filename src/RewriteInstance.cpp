@@ -15,6 +15,7 @@
 #include "BinaryContext.h"
 #include "BinaryFunction.h"
 #include "BinaryPassManager.h"
+#include "BoltAddressTranslation.h"
 #include "CacheMetrics.h"
 #include "DWARFRewriter.h"
 #include "DataAggregator.h"
@@ -366,6 +367,13 @@ UpdateDebugSections("update-debug-sections",
   cl::ZeroOrMore,
   cl::cat(BoltCategory));
 
+cl::opt<bool>
+EnableBAT("enable-bat",
+  cl::desc("write BOLT Address Translation tables"),
+  cl::init(false),
+  cl::ZeroOrMore,
+  cl::cat(BoltCategory));
+
 static cl::opt<bool>
 UseGnuStack("use-gnu-stack",
   cl::desc("use GNU_STACK program header for new segment (workaround for "
@@ -463,7 +471,7 @@ bool shouldProcess(const BinaryFunction &Function) {
   if (!FunctionNames.empty()) {
     IsValid = false;
     for (auto &Name : FunctionNames) {
-      if (Function.hasName(Name)) {
+      if (Function.hasNameRegex(Name)) {
         IsValid = true;
         break;
       }
@@ -473,7 +481,7 @@ bool shouldProcess(const BinaryFunction &Function) {
     return false;
 
   for (auto &Name : SkipFunctionNames) {
-    if (Function.hasName(Name))
+    if (Function.hasNameRegex(Name))
       return false;
   }
 
@@ -497,7 +505,7 @@ size_t padFunction(const BinaryFunction &Function) {
   for (auto &FPI : FunctionPadding) {
     auto Name = FPI.first;
     auto Padding = FPI.second;
-    if (Function.hasName(Name)) {
+    if (Function.hasNameRegex(Name)) {
       return Padding;
     }
   }
@@ -735,6 +743,7 @@ RewriteInstance::RewriteInstance(ELFObjectFileBase *File, DataReader &DR,
           File, DR,
           DWARFContext::create(*File, nullptr,
                                DWARFContext::defaultErrorHandler, "", false))),
+      BAT(llvm::make_unique<BoltAddressTranslation>(*BC)),
       SHStrTab(StringTableBuilder::ELF) {
   if (opts::UpdateDebugSections) {
     DebugInfoRewriter = llvm::make_unique<DWARFRewriter>(*BC, SectionPatchers);
@@ -751,6 +760,7 @@ void RewriteInstance::reset() {
       InputFile, DR,
       DWARFContext::create(*InputFile, nullptr,
                            DWARFContext::defaultErrorHandler, "", false));
+  BAT = llvm::make_unique<BoltAddressTranslation>(*BC);
   CFIRdWrt.reset(nullptr);
   OLT.reset(nullptr);
   EFMM.reset();
@@ -831,6 +841,7 @@ void RewriteInstance::discoverStorage() {
     }
 
     if (!opts::HeatmapMode &&
+        !(opts::AggregateOnly && BAT->enabledFor(InputFile)) &&
         (SectionName.startswith(OrgSecPrefix) ||
          SectionName.startswith(BOLTSecPrefix))) {
       errs() << "BOLT-ERROR: input file was processed by BOLT. "
@@ -923,13 +934,13 @@ void RewriteInstance::parseSDTNotes() {
 
     // Parse description
     SDTMarkerInfo Marker;
+    Marker.PCOffset = Offset;
     Marker.PC = DE.getU64(&Offset);
     Marker.Base = DE.getU64(&Offset);
     Marker.Semaphore = DE.getU64(&Offset);
     Marker.Provider = DE.getCStr(&Offset);
     Marker.Name = DE.getCStr(&Offset);
     Marker.Args = DE.getCStr(&Offset);
-
     Offset = alignTo(Offset, 4);
     BC->SDTMarkers[Marker.PC] = Marker;
   }
@@ -1037,6 +1048,12 @@ void RewriteInstance::run() {
     adjustCommandLineOptions();
     discoverFileObjects();
     preprocessProfileData();
+    if (opts::AggregateOnly && DA.usesBAT()) {
+      // Skip disassembling if we have a translation table and we running an
+      // aggregation job.
+      processProfileData();
+      return;
+    }
     readDebugInfo();
     disassembleFunctions();
     processProfileData();
@@ -1669,7 +1686,10 @@ void RewriteInstance::adjustFunctionBoundaries() {
     auto &Function = BFI->second;
 
     // Check if it's a fragment of a function.
-    if (auto *FragName = Function.hasNameRegex("\\.cold\\.")) {
+    const auto *FragName = Function.hasNameRegex(".*\\.cold\\..*");
+    if (!FragName)
+      FragName = Function.hasNameRegex(".*\\.cold");
+    if (FragName) {
       static bool PrintedWarning = false;
       if (BC->HasRelocations && !PrintedWarning) {
         errs() << "BOLT-WARNING: split function detected on input : "
@@ -1830,7 +1850,7 @@ void RewriteInstance::readSpecialSections() {
     }
   }
 
-  if (HasDebugInfo && !opts::UpdateDebugSections) {
+  if (HasDebugInfo && !opts::UpdateDebugSections && !opts::AggregateOnly) {
     errs() << "BOLT-WARNING: debug info will be stripped from the binary. "
               "Use -update-debug-sections to keep it.\n";
   }
@@ -1844,6 +1864,15 @@ void RewriteInstance::readSpecialSections() {
   RelaPLTSection = BC->getUniqueSectionByName(".rela.plt");
   BuildIDSection = BC->getUniqueSectionByName(".note.gnu.build-id");
   SDTSection = BC->getUniqueSectionByName(".note.stapsdt");
+
+  if (auto BATSec =
+          BC->getUniqueSectionByName(BoltAddressTranslation::SECTION_NAME)) {
+    if (std::error_code EC = BAT->parse(BATSec->getContents())) {
+      errs() << "BOLT-ERROR: failed to parse BOLT address translation "
+                "table.\n";
+      exit(1);
+    }
+  }
 
   if (opts::PrintSections) {
     outs() << "BOLT-INFO: Sections from original binary:\n";
@@ -2547,6 +2576,11 @@ void RewriteInstance::preprocessProfileData() {
 
   NamedRegionTimer T("preprocessprofile", "pre-process profile data",
                      TimerGroupName, TimerGroupDesc, opts::TimeRewrite);
+  if (BAT->enabledFor(InputFile)) {
+    outs() << "BOLT-INFO: profile collection done on a binary already "
+              "processed by BOLT\n";
+    DA.setBAT(&*BAT);
+  }
   DA.parseProfile(*BC.get());
 }
 
@@ -2578,6 +2612,10 @@ void RewriteInstance::processProfileData() {
 
     // Preliminary match profile data to functions.
     if (!BC->DR.getAllFuncsData().empty()) {
+      if (BC->DR.collectedInBoltedBinary()) {
+        outs() << "BOLT-INFO: profile collection done on a binary already "
+                  "processed by BOLT\n";
+      }
       for (auto &BFI : BinaryFunctions) {
         auto &Function = BFI.second;
         if (auto *MemData = BC->DR.getFuncMemData(Function.getNames())) {
@@ -2799,7 +2837,7 @@ void RewriteInstance::emitFunction(MCStreamer &Streamer,
   // Emit UD2 at the beginning if requested by user.
   if (!opts::BreakFunctionNames.empty()) {
     for (auto &Name : opts::BreakFunctionNames) {
-      if (Function.hasName(Name)) {
+      if (Function.hasNameRegex(Name)) {
         Streamer.EmitIntValue(0x0B0F, 2); // UD2: 0F 0B
         break;
       }
@@ -2807,7 +2845,8 @@ void RewriteInstance::emitFunction(MCStreamer &Streamer,
   }
 
   // Emit code.
-  Function.emitBody(Streamer, EmitColdPart);
+  Function.emitBody(Streamer, EmitColdPart, false,
+                    /*LabelsForOffsets=*/opts::EnableBAT);
 
   // Emit padding if requested.
   if (auto Padding = opts::padFunction(Function)) {
@@ -3324,6 +3363,9 @@ void RewriteInstance::mapDataSections(orc::VModuleKey Key) {
 }
 
 void RewriteInstance::updateOutputValues(const MCAsmLayout &Layout) {
+  SectionPatchers[".note.stapsdt"] = llvm::make_unique<SimpleBinaryPatcher>();
+  auto *SDTNotePatcher = static_cast<SimpleBinaryPatcher *>(
+      SectionPatchers[".note.stapsdt"].get());
 
   auto updateOutputValue = [&](BinaryFunction &Function) {
     if (!Function.isEmitted()) {
@@ -3371,9 +3413,37 @@ void RewriteInstance::updateOutputValues(const MCAsmLayout &Layout) {
           Layout.getSymbolOffset(*Function.getFunctionEndLabel()));
     }
 
-    // Update basic block output ranges only for the debug info or if we have
-    // secondary entry points in the symbol table to update
-    if (!opts::UpdateDebugSections && !Function.isMultiEntry())
+    // Create patches that update .note.stapsdt section to reflect the new
+    // locations of the SDT markers
+    if (Function.hasSDTMarker()) {
+      for (auto BBI = Function.layout_begin(), BBE = Function.layout_end();
+           BBI != BBE; ++BBI) {
+        auto *BB = *BBI;
+        const auto BBBaseAddress = BB->isCold() ? ColdBaseAddress : BaseAddress;
+
+        for (auto &Instr : *BB) {
+          if (BC->MIB->hasAnnotation(Instr, "SDTMarker")) {
+            const auto OriginalSDTAddress =
+                BC->MIB->getAnnotationAs<uint64_t>(Instr, "SDTMarker");
+            const auto NewSDTAddress =
+                Layout.getSymbolOffset(
+                    *BC->SDTMarkers[OriginalSDTAddress].Label) +
+                BBBaseAddress;
+            DEBUG(dbgs() << "SDTMarker at :" << utohexstr(OriginalSDTAddress)
+                         << "moved to :" << utohexstr(NewSDTAddress) << "\n");
+
+            SDTNotePatcher->addLE64Patch(
+                BC->SDTMarkers[OriginalSDTAddress].PCOffset, NewSDTAddress);
+            BC->MIB->removeAnnotation(Instr, "SDTMarker");
+          }
+        }
+      }
+    }
+
+    // Update basic block output ranges for the debug info, if we have
+    // secondary entry points in the symbol table to update or if writing BAT
+    if (!opts::UpdateDebugSections && !Function.isMultiEntry() &&
+        !opts::EnableBAT)
       return;
 
     // Output ranges should match the input if the body hasn't changed.
@@ -3409,6 +3479,21 @@ void RewriteInstance::updateOutputValues(const MCAsmLayout &Layout) {
         PrevBB->setOutputEndAddress(PrevBBEndAddress);
       }
       PrevBB = BB;
+
+      if (!opts::EnableBAT)
+        continue;
+
+      // Record location of special instrs that require an offset for profile
+      // assignment when writing BOLT address translation table
+      for (auto &Inst : *BB) {
+        if (!BC->MIB->hasAnnotation(Inst, "LocSym"))
+          continue;
+        uint32_t &SymIdx = BC->MIB->getAnnotationAs<uint32_t>(Inst, "LocSym");
+        const MCSymbol *LocSym = Function.getLocSym(SymIdx);
+        const auto CallOffset =
+            BBBaseAddress + Layout.getSymbolOffset(*LocSym);
+        SymIdx = CallOffset;
+      }
     }
     PrevBB->setOutputEndAddress(PrevBB->isCold() ?
         Function.cold().getAddress() + Function.cold().getImageSize() :
@@ -3773,8 +3858,8 @@ std::string encodeELFNote(StringRef NameStr, StringRef DescStr, uint32_t Type) {
   OS.write(reinterpret_cast<const char *>(&(NameSz)), 4);
   OS.write(reinterpret_cast<const char *>(&(DescSz)), 4);
   OS.write(reinterpret_cast<const char *>(&(Type)), 4);
-  OS << NameStr;
-  for (uint64_t I = NameStr.size(); I < alignTo(NameStr.size(), 4); ++I) {
+  OS << NameStr << '\0';
+  for (uint64_t I = NameSz; I < alignTo(NameSz, 4); ++I) {
     OS << '\0';
   }
   OS << DescStr;
@@ -3801,6 +3886,27 @@ void RewriteInstance::addBoltInfoSection() {
       encodeELFNote("GNU", DescStr, 4 /*NT_GNU_GOLD_VERSION*/);
   BC->registerOrUpdateNoteSection(".note.bolt_info", copyByteArray(BoltInfo),
                                   BoltInfo.size(),
+                                  /*Alignment=*/1,
+                                  /*IsReadOnly=*/true, ELF::SHT_NOTE);
+}
+
+void RewriteInstance::addBATSection() {
+  BC->registerOrUpdateNoteSection(BoltAddressTranslation::SECTION_NAME, nullptr,
+                                  0,
+                                  /*Alignment=*/1,
+                                  /*IsReadOnly=*/true, ELF::SHT_NOTE);
+}
+
+void RewriteInstance::encodeBATSection() {
+  std::string DescStr;
+  raw_string_ostream DescOS(DescStr);
+
+  BAT->write(DescOS);
+  DescOS.flush();
+
+  const auto BoltInfo = encodeELFNote("BOLT", DescStr, 0x1);
+  BC->registerOrUpdateNoteSection(BoltAddressTranslation::SECTION_NAME,
+                                  copyByteArray(BoltInfo), BoltInfo.size(),
                                   /*Alignment=*/1,
                                   /*IsReadOnly=*/true, ELF::SHT_NOTE);
 }
@@ -4719,6 +4825,11 @@ void RewriteInstance::rewriteFile() {
     writeEHFrameHeader();
   }
 
+  // Add BOLT Addresses Translation maps to allow profile collection to
+  // happen in the output binary
+  if (opts::EnableBAT)
+    addBATSection();
+
   // Patch program header table.
   patchELFPHDRTable();
 
@@ -4729,6 +4840,9 @@ void RewriteInstance::rewriteFile() {
   patchELFSymTabs();
 
   patchBuildID();
+
+  if (opts::EnableBAT)
+    encodeBATSection();
 
   // Copy non-allocatable sections once allocatable part is finished.
   rewriteNoteSections();
