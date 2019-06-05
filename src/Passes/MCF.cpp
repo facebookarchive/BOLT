@@ -2460,12 +2460,10 @@ void solveMCF(BinaryFunction &BF, MCFCostFunction CostFunction) {
       }
     };
 
-    size_t CurEdgeNum{0};
     auto Next = std::next(BBI);
     for (auto Succ : BB.successors()) {
       int IsFT = (Next != E && Succ == *Next) ? 1 : 0;
       AddSuccArc(Succ, BI->Count, IsFT);
-      ++CurEdgeNum;
       ++BI;
     }
 
