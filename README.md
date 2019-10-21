@@ -67,6 +67,22 @@ ensure the rest of the commands in this tutorial work.
 Note that we use a specific revision of LLVM as we currently rely on a set of
 patches that are not yet upstreamed.
 
+## Optimizing BOLT's Performance
+
+BOLT runs many internal passes in parallel. If you foresee heavy usage of
+BOLT, you can improve the processing time by linking against one of memory
+allocation libraries with good support for concurrency. E.g. to use jemalloc:
+
+```
+> sudo yum install jemalloc-devel
+> LD_PRELOAD=/usr/lib64/libjemalloc.so llvm-bolt ....
+```
+Or if you rather use tcmalloc:
+```
+> sudo yum install gperftools-devel
+> LD_PRELOAD=/usr/lib64/libtcmalloc_minimal.so llvm-bolt ....
+```
+
 ## Usage
 
 For a complete practical guide of using BOLT see [Optimizing Clang with BOLT](./docs/OptimizingClang.md).
