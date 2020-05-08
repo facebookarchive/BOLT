@@ -1,4 +1,4 @@
-//===-- ProfileReader.h - BOLT profile deserializer -------------*- C++ -*-===//
+//===-- YAMLProfileReader.h - BOLT YAML profile deserializer ----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -9,19 +9,46 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TOOLS_LLVM_BOLT_PROFILEREADER_H
-#define LLVM_TOOLS_LLVM_BOLT_PROFILEREADER_H
+#ifndef LLVM_TOOLS_LLVM_BOLT_YAML_PROFILE_READER_H
+#define LLVM_TOOLS_LLVM_BOLT_YAML_PROFILE_READER_H
 
 #include "BinaryFunction.h"
+#include "ProfileReaderBase.h"
 #include "ProfileYAMLMapping.h"
 #include <unordered_set>
 
 namespace llvm {
 namespace bolt {
 
-class ProfileReader {
-private:
+class YAMLProfileReader : public ProfileReaderBase {
+public:
+  explicit YAMLProfileReader(StringRef Filename)
+    : ProfileReaderBase(Filename) {}
 
+  StringRef getReaderName() const override {
+    return "YAML profile reader";
+  }
+
+  bool isTrustedSource() const override {
+    return false;
+  }
+
+  Error readProfilePreCFG(BinaryContext &BC) override {
+    return Error::success();
+  }
+
+  Error readProfile(BinaryContext &BC) override;
+
+  Error preprocessProfile(BinaryContext &BC) override;
+
+  virtual bool hasLocalsWithFileName() const override;
+
+  virtual bool mayHaveProfileData(const BinaryFunction &BF) override;
+
+  /// Check if the file contains YAML.
+  static bool isYAML(StringRef Filename);
+
+private:
   /// Adjustments for basic samples profiles (without LBR).
   bool NormalizeByInsnCount{false};
   bool NormalizeByCalls{false};
@@ -36,10 +63,6 @@ private:
   /// is attributed.
   std::unordered_set<const BinaryFunction *> ProfiledFunctions;
 
-  /// Populate \p Function profile with the one supplied in YAML format.
-  bool parseFunctionProfile(BinaryFunction &Function,
-                            const yaml::bolt::BinaryFunctionProfile &YamlBF);
-
   /// For LTO symbol resolution.
   /// Map a common LTO prefix to a list of YAML profiles matching the prefix.
   StringMap<std::vector<yaml::bolt::BinaryFunctionProfile *>> LTOCommonNameMap;
@@ -50,6 +73,10 @@ private:
 
   /// Strict matching of a name in a profile to its contents.
   StringMap<yaml::bolt::BinaryFunctionProfile *> ProfileNameToProfile;
+
+  /// Populate \p Function profile with the one supplied in YAML format.
+  bool parseFunctionProfile(BinaryFunction &Function,
+                            const yaml::bolt::BinaryFunctionProfile &YamlBF);
 
   /// Initialize maps for profile matching.
   void buildNameMaps(std::map<uint64_t, BinaryFunction> &Functions);
@@ -69,12 +96,6 @@ private:
 
   /// Check if the profile uses an event with a given \p Name.
   bool usesEvent(StringRef Name) const;
-
-public:
-  /// Read profile from a file and associate with a set of functions.
-  std::error_code readProfile(const std::string &FileName,
-                              std::map<uint64_t, BinaryFunction> &Functions);
-
 };
 
 }

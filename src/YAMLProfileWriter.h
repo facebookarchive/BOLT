@@ -1,4 +1,4 @@
-//===-- ProfileWriter.cpp - serialize profiling data ------------*- C++ -*-===//
+//===- YAMLProfileWriter.cpp - serialize profiling data in YAML -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef LLVM_TOOLS_LLVM_BOLT_PROFILE_WRITER_H
-#define LLVM_TOOLS_LLVM_BOLT_PROFILE_WRITER_H
+#ifndef LLVM_TOOLS_LLVM_BOLT_YAML_PROFILE_WRITER_H
+#define LLVM_TOOLS_LLVM_BOLT_YAML_PROFILE_WRITER_H
 
 #include "BinaryBasicBlock.h"
 #include "BinaryContext.h"
@@ -26,16 +26,16 @@
 namespace llvm {
 namespace bolt {
 
-class ProfileWriter {
-  ProfileWriter() = delete;
+class YAMLProfileWriter {
+  YAMLProfileWriter() = delete;
 
-  std::string FileName;
+  std::string Filename;
 
   std::unique_ptr<raw_fd_ostream> OS;
 
 public:
-  explicit ProfileWriter(const std::string &FileName)
-    : FileName(FileName) {
+  explicit YAMLProfileWriter(const std::string &Filename)
+    : Filename(Filename) {
   }
 
   /// Save execution profile for that instance.
@@ -45,4 +45,4 @@ public:
 } // namespace bolt
 } // namespace llvm
 
-#endif // LLVM_TOOLS_LLVM_BOLT_PROFILE_WRITER_H
+#endif

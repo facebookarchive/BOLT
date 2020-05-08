@@ -1,4 +1,4 @@
-//===-- ProfileWriter.cpp - Serialize profiling data ------------*- C++ -*-===//
+//===- YAMLProfileWriter.cpp - serialize profiling data in YAML -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -13,8 +13,8 @@
 #include "BinaryBasicBlock.h"
 #include "BinaryFunction.h"
 #include "DataAggregator.h"
-#include "ProfileWriter.h"
 #include "ProfileYAMLMapping.h"
+#include "YAMLProfileWriter.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -40,21 +40,13 @@ convert(const BinaryFunction &BF, yaml::bolt::BinaryFunctionProfile &YamlBF) {
   YamlBF.NumBasicBlocks = BF.size();
   YamlBF.ExecCount = BF.getKnownExecutionCount();
 
-  FuncSampleData *SampleDataOrErr{nullptr};
-  if (!LBRProfile) {
-    SampleDataOrErr = BC.DR.getFuncSampleData(BF.getNames());
-    if (!SampleDataOrErr)
-      return;
-  }
-
   for (const auto *BB : BF.dfs()) {
     yaml::bolt::BinaryBasicBlockProfile YamlBB;
     YamlBB.Index = BB->getLayoutIndex();
     YamlBB.NumInstructions = BB->getNumNonPseudos();
 
     if (!LBRProfile) {
-      YamlBB.EventCount =
-        SampleDataOrErr->getSamples(BB->getInputOffset(), BB->getEndOffset());
+      YamlBB.EventCount = BB->getKnownExecutionCount();
       if (YamlBB.EventCount)
         YamlBF.Blocks.emplace_back(YamlBB);
       continue;
@@ -154,14 +146,15 @@ convert(const BinaryFunction &BF, yaml::bolt::BinaryFunctionProfile &YamlBF) {
 } // end anonymous namespace
 
 std::error_code
-ProfileWriter::writeProfile(const RewriteInstance &RI) {
-  const auto &Functions = RI.getBinaryContext().getBinaryFunctions();
+YAMLProfileWriter::writeProfile(const RewriteInstance &RI) {
+  auto &BC = RI.getBinaryContext();
+  const auto &Functions = BC.getBinaryFunctions();
 
   std::error_code EC;
-  OS = llvm::make_unique<raw_fd_ostream>(FileName, EC, sys::fs::F_None);
+  OS = llvm::make_unique<raw_fd_ostream>(Filename, EC, sys::fs::F_None);
   if (EC) {
     errs() << "BOLT-WARNING: " << EC.message() << " : unable to open "
-           << FileName << " for output.\n";
+           << Filename << " for output.\n";
     return EC;
   }
 
@@ -169,20 +162,12 @@ ProfileWriter::writeProfile(const RewriteInstance &RI) {
 
   // Fill out the header info.
   BP.Header.Version = 1;
-  auto FileName = RI.getInputFileName();
-  BP.Header.FileName = FileName ? *FileName : "<unknown>";
-  auto BuildID = RI.getPrintableBuildID();
+  BP.Header.FileName = BC.getFilename();
+  auto BuildID = BC.getFileBuildID();
   BP.Header.Id = BuildID ? *BuildID : "<unknown>";
+  BP.Header.Origin = RI.getProfileReader()->getReaderName();
 
-  if (RI.getDataAggregator().started()) {
-    BP.Header.Origin = "aggregator";
-  } else {
-    BP.Header.Origin = "conversion";
-  }
-
-  auto EventNames = RI.getDataAggregator().getEventNames();
-  if (EventNames.empty())
-    EventNames = RI.getBinaryContext().DR.getEventNames();
+  auto EventNames = RI.getProfileReader()->getEventNames();
   if (!EventNames.empty()) {
     std::string Sep = "";
     for (const auto &EventEntry : EventNames) {
@@ -210,8 +195,7 @@ ProfileWriter::writeProfile(const RewriteInstance &RI) {
   for (const auto &BFI : Functions) {
     const auto &BF = BFI.second;
     if (BF.hasProfile()) {
-      // In conversion mode ignore stale functions.
-      if (!BF.hasValidProfile() && !RI.getDataAggregator().started())
+      if (!BF.hasValidProfile() && !RI.getProfileReader()->isTrustedSource())
         continue;
 
       yaml::bolt::BinaryFunctionProfile YamlBF;

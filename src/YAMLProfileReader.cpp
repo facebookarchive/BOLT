@@ -1,4 +1,4 @@
-//===-- ProfileReader.cpp - BOLT profile de-serializer ----------*- C++ -*-===//
+//===-- YAMLProfileReader.cpp - BOLT YAML profile de-serializer -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -12,8 +12,9 @@
 #include "BinaryBasicBlock.h"
 #include "BinaryFunction.h"
 #include "Passes/MCF.h"
-#include "ProfileReader.h"
+#include "YAMLProfileReader.h"
 #include "ProfileYAMLMapping.h"
+#include "Utils.h"
 #include "llvm/Support/CommandLine.h"
 
 using namespace llvm;
@@ -36,8 +37,18 @@ IgnoreHash("profile-ignore-hash",
 namespace llvm {
 namespace bolt {
 
-void
-ProfileReader::buildNameMaps(std::map<uint64_t, BinaryFunction> &Functions) {
+bool YAMLProfileReader::isYAML(const StringRef Filename) {
+  auto MB = MemoryBuffer::getFileOrSTDIN(Filename);
+  if (std::error_code EC = MB.getError())
+    report_error(Filename, EC);
+  auto Buffer = MB.get()->getBuffer();
+  if (Buffer.startswith("---\n"))
+    return true;
+  return false;
+}
+
+void YAMLProfileReader::buildNameMaps(
+    std::map<uint64_t, BinaryFunction> &Functions) {
   for (auto &YamlBF : YamlBP.Functions) {
     StringRef Name = YamlBF.Name;
     const auto Pos = Name.find("(*");
@@ -58,8 +69,17 @@ ProfileReader::buildNameMaps(std::map<uint64_t, BinaryFunction> &Functions) {
   }
 }
 
-bool
-ProfileReader::parseFunctionProfile(BinaryFunction &BF,
+bool YAMLProfileReader::hasLocalsWithFileName() const {
+  for (const auto &KV : ProfileNameToProfile) {
+    const auto &FuncName = KV.getKey();
+    if (FuncName.count('/') == 2 && FuncName[0] != '/')
+      return true;
+  }
+  return false;
+}
+
+bool YAMLProfileReader::parseFunctionProfile(
+    BinaryFunction &BF,
     const yaml::bolt::BinaryFunctionProfile &YamlBF) {
   auto &BC = BF.getBinaryContext();
 
@@ -227,40 +247,55 @@ ProfileReader::parseFunctionProfile(BinaryFunction &BF,
   return ProfileMatched;
 }
 
-std::error_code
-ProfileReader::readProfile(const std::string &FileName,
-                           std::map<uint64_t, BinaryFunction> &Functions) {
-  auto MB = MemoryBuffer::getFileOrSTDIN(FileName);
+Error YAMLProfileReader::preprocessProfile(BinaryContext &BC) {
+  auto MB = MemoryBuffer::getFileOrSTDIN(Filename);
   if (std::error_code EC = MB.getError()) {
-    errs() << "ERROR: cannot open " << FileName << ": " << EC.message() << "\n";
-    return EC;
+    errs() << "ERROR: cannot open " << Filename << ": " << EC.message() << "\n";
+    return errorCodeToError(EC);
   }
   yaml::Input YamlInput(MB.get()->getBuffer());
 
   // Consume YAML file.
   YamlInput >> YamlBP;
   if (YamlInput.error()) {
-    errs() << "BOLT-ERROR: syntax error parsing profile in " << FileName
+    errs() << "BOLT-ERROR: syntax error parsing profile in " << Filename
            << " : " << YamlInput.error().message() << '\n';
-    return YamlInput.error();
+    return errorCodeToError(YamlInput.error());
   }
 
   // Sanity check.
   if (YamlBP.Header.Version != 1) {
-    errs() << "BOLT-ERROR: cannot read profile : unsupported version\n";
-    return std::make_error_code(std::errc::executable_format_error);
+    return make_error<StringError>(
+        Twine("cannot read profile : unsupported version"),
+        inconvertibleErrorCode());
   }
   if (YamlBP.Header.EventNames.find(',') != StringRef::npos) {
-    errs() << "BOLT-ERROR: multiple events in profile are not supported\n";
-    return std::make_error_code(std::errc::executable_format_error);
+    return make_error<StringError>(
+        Twine("multiple events in profile are not supported"),
+        inconvertibleErrorCode());
   }
 
-  NormalizeByInsnCount = usesEvent("cycles") || usesEvent("instructions");
-  NormalizeByCalls = usesEvent("branches");
-
   // Match profile to function based on a function name.
-  buildNameMaps(Functions);
+  buildNameMaps(BC.getBinaryFunctions());
 
+  return Error::success();
+}
+
+bool YAMLProfileReader::mayHaveProfileData(const BinaryFunction &BF) {
+  for (StringRef Name : BF.getNames()) {
+    if (ProfileNameToProfile.find(Name) != ProfileNameToProfile.end())
+      return true;
+    if (const auto CommonName = getLTOCommonName(Name)) {
+      if (LTOCommonNameMap.find(*CommonName) != LTOCommonNameMap.end()) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+Error YAMLProfileReader::readProfile(BinaryContext &BC) {
   YamlProfileToFunction.resize(YamlBP.Functions.size() + 1);
 
   auto profileMatches = [](const yaml::bolt::BinaryFunctionProfile &Profile,
@@ -276,7 +311,7 @@ ProfileReader::readProfile(const std::string &FileName,
   // We have to do 2 passes since LTO introduces an ambiguity in function
   // names. The first pass assigns profiles that match 100% by name and
   // by hash. The second pass allows name ambiguity for LTO private functions.
-  for (auto &BFI : Functions) {
+  for (auto &BFI : BC.getBinaryFunctions()) {
     auto &Function = BFI.second;
 
     // Recompute hash once per function.
@@ -294,7 +329,7 @@ ProfileReader::readProfile(const std::string &FileName,
     }
   }
 
-  for (auto &BFI : Functions) {
+  for (auto &BFI : BC.getBinaryFunctions()) {
     auto &Function = BFI.second;
 
     if (ProfiledFunctions.count(&Function))
@@ -341,6 +376,7 @@ ProfileReader::readProfile(const std::string &FileName,
       }
     }
   }
+
   for (auto &YamlBF : YamlBP.Functions) {
     if (!YamlBF.Used) {
       errs() << "BOLT-WARNING: profile ignored for function "
@@ -348,20 +384,30 @@ ProfileReader::readProfile(const std::string &FileName,
     }
   }
 
+  // Set for parseFunctionProfile().
+  NormalizeByInsnCount = usesEvent("cycles") || usesEvent("instructions");
+  NormalizeByCalls = usesEvent("branches");
+
+  uint64_t NumUnused{0};
   for (auto &YamlBF : YamlBP.Functions) {
     if (YamlBF.Id >= YamlProfileToFunction.size()) {
       // Such profile was ignored.
+      ++NumUnused;
       continue;
     }
     if (auto *BF = YamlProfileToFunction[YamlBF.Id]) {
       parseFunctionProfile(*BF, YamlBF);
+    } else {
+      ++NumUnused;
     }
   }
 
-  return YamlInput.error();
+  BC.setNumUnusedProfiledObjects(NumUnused);
+
+  return Error::success();
 }
 
-bool ProfileReader::usesEvent(StringRef Name) const {
+bool YAMLProfileReader::usesEvent(StringRef Name) const {
   return YamlBP.Header.EventNames.find(Name) != StringRef::npos;
 }
 
