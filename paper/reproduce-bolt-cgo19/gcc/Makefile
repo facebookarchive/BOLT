@@ -2,7 +2,7 @@
 # "BOLT: A Practical Binary Optimizer for Data Centers and Beyond"
 # CGO 2019
 #
-# The open-source workload evaluated on this paper is gcc 8.2.#
+# The open-source workload evaluated on this paper is gcc 8.#
 # It is important to adjust NUMCORES to the number of cores in your system as
 # it *will* affect results.
 #
@@ -55,7 +55,7 @@ results: print_results_gccpgo print_results_gccbolt print_results_gccpgobolt
 # Step 1: Download GCC sources.
 $(GCCSOURCE):
 	mkdir -p $(BENCHMARKS)
-	cd $(BENCHMARKS)    && git clone -q --depth=1 --branch=gcc-8_2_0-release \
+	cd $(BENCHMARKS)    && git clone -q --depth=1 --branch=releases/gcc-8 \
 	  https://github.com/gcc-mirror/gcc gcc
 	cd $(BENCHMARKS)/gcc && ./contrib/download_prerequisites
 
@@ -173,7 +173,7 @@ $(RAWDATA).%: $(BENCHMARKS)/% $(BOLT) $(GCCSOURCE)
 $(BOLTDATA).gccbolt $(BOLTDATA).gccpgobolt: \
 $(BOLTDATA).%: $(RAWDATA).% $(PERF2BOLT)
 	cd $(BENCHMARKS) && \
-	  $(PERF2BOLT) $(BENCHMARKS)/$(*)/install/libexec/gcc/x86_64-pc-linux-gnu/8.2.0/cc1plus \
+	  $(PERF2BOLT) $(BENCHMARKS)/$(*)/install/libexec/gcc/x86_64-pc-linux-gnu/8.4.1/cc1plus \
 	  -p $< -o $@ -w $@.yaml |& tee $(BOLTLOG).$*
 
 # Step 10: Run BOLT now that we have both inputs: the profile data collected by
@@ -181,13 +181,13 @@ $(BOLTDATA).%: $(RAWDATA).% $(PERF2BOLT)
 # did and output a faster binary (faster gcc, for this case).
 $(BENCHMARKS)/gccbolt/install/bin/gcc $(BENCHMARKS)/gccpgobolt/install/bin/gcc:\
 $(BENCHMARKS)/%bolt/install/bin/gcc: $(BOLTDATA).%bolt
-	$(BOLT) $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.2.0/cc1plus \
-	  -o $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.2.0/cc1plus.bolt -b $(<).yaml \
+	$(BOLT) $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.4.1/cc1plus \
+	  -o $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.4.1/cc1plus.bolt -b $(<).yaml \
 	  -reorder-blocks=cache+ -reorder-functions=hfsort+ -split-functions=3 \
 	  -split-all-cold -dyno-stats -icf=1 -use-gnu-stack |& \
 	  tee -a $(BOLTLOG).$(*)bolt
-	cp $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.2.0/cc1plus.bolt \
-	  $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.2.0/cc1plus
+	cp $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.4.1/cc1plus.bolt \
+	  $(@D)/../libexec/gcc/x86_64-pc-linux-gnu/8.4.1/cc1plus
 
 # Step 11: Measure compile time to build a large project (clang)
 # to evaluate compiler performance.
