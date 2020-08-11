@@ -144,6 +144,11 @@ WriteAutoFDOData("autofdo",
   cl::ZeroOrMore,
   cl::cat(AggregatorCategory));
 
+static cl::opt<std::string>
+TmpDirectory("tmpdir",
+  cl::desc("specify a directory to store temporary files."),
+  cl::cat(AggregatorCategory));
+
 }
 
 namespace {
@@ -264,22 +269,46 @@ void DataAggregator::launchPerfProcess(StringRef Name, PerfProcessInfo &PPI,
   Argv.push_back(Filename.c_str());
   Argv.push_back(nullptr);
 
-  if (auto Errc = sys::fs::createTemporaryFile("perf.script", "out",
-                                               PPI.StdoutPath)) {
-    errs() << "PERF2BOLT: failed to create temporary file "
-           << PPI.StdoutPath << " with error " << Errc.message()
-           << "\n";
-    exit(1);
-  }
-  TempFiles.push_back(PPI.StdoutPath.data());
+  if(opts::TmpDirectory.empty()) {
+    if (auto Errc = sys::fs::createTemporaryFile("perf.script", "out",
+                                                 PPI.StdoutPath)) {
+      errs() << "PERF2BOLT: failed to create temporary file "
+             << PPI.StdoutPath << " with error " << Errc.message()
+             << "\n";
+      exit(1);
+    }
+    TempFiles.push_back(PPI.StdoutPath.data());
 
-  if (auto Errc = sys::fs::createTemporaryFile("perf.script", "err",
-                                               PPI.StderrPath)) {
-    errs() << "PERF2BOLT: failed to create temporary file "
-           << PPI.StderrPath << " with error " << Errc.message() << "\n";
-    exit(1);
+    if (auto Errc = sys::fs::createTemporaryFile("perf.script", "err",
+                                                 PPI.StderrPath)) {
+      errs() << "PERF2BOLT: failed to create temporary file "
+             << PPI.StderrPath << " with error " << Errc.message() << "\n";
+      exit(1);
+    }
+    TempFiles.push_back(PPI.StderrPath.data());
   }
-  TempFiles.push_back(PPI.StderrPath.data());
+  else {
+    std::string OutFileName(opts::TmpDirectory + "/perf.script-%%%%%%.out");
+    if (auto Errc = sys::fs::createUniqueFile(OutFileName,
+                                                 PPI.StdoutPath,
+                                                 sys::fs::owner_read | sys::fs::owner_write)) {
+      errs() << "PERF2BOLT: failed to create temporary file "
+             << PPI.StdoutPath << " with error " << Errc.message()
+             << "\n";
+      exit(1);
+    }
+    TempFiles.push_back(PPI.StdoutPath.data());
+
+    std::string ErrFileName(opts::TmpDirectory + "/perf.script-%%%%%%.err");
+    if (auto Errc = sys::fs::createUniqueFile(ErrFileName,
+                                                 PPI.StderrPath,
+                                                 sys::fs::owner_read | sys::fs::owner_write)) {
+      errs() << "PERF2BOLT: failed to create temporary file "
+             << PPI.StderrPath << " with error " << Errc.message() << "\n";
+      exit(1);
+    }
+    TempFiles.push_back(PPI.StderrPath.data());
+  }
 
   Optional<StringRef> Redirects[] = {
       llvm::None,                        // Stdin
