@@ -22,6 +22,7 @@
 #include "DataReader.h"
 #include "Exceptions.h"
 #include "ExecutableFileMemoryManager.h"
+#include "Passes/FeatureMiner.h"
 #include "MCPlusBuilder.h"
 #include "ParallelUtilities.h"
 #include "Passes/ReorderFunctions.h"
@@ -91,6 +92,7 @@ extern cl::OptionCategory BoltDiffCategory;
 extern cl::OptionCategory BoltOptCategory;
 extern cl::OptionCategory BoltOutputCategory;
 extern cl::OptionCategory AggregatorCategory;
+extern cl::OptionCategory InferenceCategory;
 
 extern cl::opt<MacroFusionType> AlignMacroOpFusion;
 extern cl::opt<bool> Hugify;
@@ -147,6 +149,31 @@ DumpDotAll("dump-dot-all",
   cl::ZeroOrMore,
   cl::Hidden,
   cl::cat(BoltCategory));
+
+cl::opt<bool>
+DumpAll("dump-all",
+  cl::desc("dump function CFGs to text file format after each stage"),
+  cl::ZeroOrMore, cl::cat(BoltCategory));
+
+cl::opt<bool>
+GenFeatures("gen-features",
+  cl::desc("capture features useful for training an ML model on branch behavior"
+           " and save them in CSV format."),
+  cl::ZeroOrMore, cl::cat(InferenceCategory));
+
+cl::opt<bool>
+FreqInference("infer-local-counts",
+  cl::desc("calculates local blocks and edge frequencies for a function based "
+  "on its probabilities."),
+  cl::ZeroOrMore,
+  cl::cat(InferenceCategory));
+
+cl::opt<bool>
+FuncFreqInference("infer-global-counts",
+  cl::desc("calculates global function call and funtion invocation based on "
+  "intraprocedural block frequencies."),
+  cl::ZeroOrMore,
+  cl::cat(InferenceCategory));
 
 static cl::opt<bool>
 DumpEHFrame("dump-eh-frame",
@@ -554,7 +581,8 @@ void RewriteInstance::discoverStorage() {
         SectionContents.data() - InputFile->getData().data();
     }
 
-    if (!opts::HeatmapMode &&
+    if (!opts::GenFeatures && !opts::HeatmapMode &&
+        !opts::FreqInference && !opts::FuncFreqInference &&
         !(opts::AggregateOnly && BAT->enabledFor(InputFile)) &&
         (SectionName.startswith(getOrgSecPrefix()) ||
          SectionName == getBOLTTextSectionName())) {
@@ -794,6 +822,21 @@ void RewriteInstance::run() {
   buildFunctionsCFG();
 
   processProfileData();
+
+  if(opts::FuncFreqInference){
+    // TO-DO
+  }
+
+  if(opts::FreqInference){
+    // TO-DO
+  }
+
+  if (opts::GenFeatures) {
+    std::unique_ptr<FeatureMiner> FM =
+        llvm::make_unique<FeatureMiner>(opts::GenFeatures);
+    FM->runOnFunctions(*BC);
+    return;
+  }
 
   postProcessFunctions();
 
@@ -2635,6 +2678,9 @@ void RewriteInstance::postProcessFunctions() {
 
     if (opts::DumpDotAll)
       Function.dumpGraphForPass("build-cfg");
+
+    if (opts::DumpAll)
+      Function.dumpGraphToTextFile();
 
     if (opts::PrintLoopInfo) {
       Function.calculateLoopInfo();

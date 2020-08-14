@@ -8,6 +8,7 @@ add_llvm_library(LLVMBOLTPasses
   DataflowAnalysis.cpp
   DataflowInfoManager.cpp
   ExtTSPReorderAlgorithm.cpp
+  FeatureMiner.cpp
   FrameAnalysis.cpp
   FrameOptimizer.cpp
   HFSort.cpp
@@ -34,6 +35,7 @@ add_llvm_library(LLVMBOLTPasses
   StackAvailableExpressions.cpp
   StackPointerTracking.cpp
   StackReachingUses.cpp
+  StaticBranchInfo.cpp
   StokeInfo.cpp
   ValidateInternalCalls.cpp
   VeneerElimination.cpp

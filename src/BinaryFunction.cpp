@@ -53,8 +53,12 @@ namespace opts {
 extern cl::OptionCategory BoltCategory;
 extern cl::OptionCategory BoltOptCategory;
 extern cl::OptionCategory BoltRelocCategory;
+extern cl::OptionCategory InferenceCategory;
 
 extern cl::opt<bool> EnableBAT;
+extern cl::opt<bool> GenFeatures;
+extern cl::opt<bool> FreqInference;
+extern cl::opt<bool> FuncFreqInference;
 extern cl::opt<bool> Instrument;
 extern cl::opt<bool> StrictMode;
 extern cl::opt<bool> UpdateDebugSections;
@@ -2822,7 +2826,8 @@ bool BinaryFunction::finalizeCFIState() {
 }
 
 bool BinaryFunction::requiresAddressTranslation() const {
-  return opts::EnableBAT || hasSDTMarker();
+  return opts::EnableBAT || hasSDTMarker() || opts::GenFeatures||
+         opts::FreqInference || opts::FuncFreqInference;
 }
 
 uint64_t BinaryFunction::getInstructionCount() const {
@@ -3117,6 +3122,14 @@ void BinaryFunction::dumpGraphForPass(std::string Annotation) const {
   auto Filename = constructFilename(getPrintName(), Annotation, ".dot");
   outs() << "BOLT-DEBUG: Dumping CFG to " << Filename << "\n";
   dumpGraphToFile(Filename);
+}
+
+void BinaryFunction::dumpGraphToTextFile(std::string Annotation) const {
+  auto Filename = constructFilename(getPrintName(), Annotation, ".txt");
+  outs() << "BOLT-DEBUG: Dumping CFG to " << Filename << "\n";
+  std::error_code EC;
+  raw_fd_ostream Printer(Filename, EC, sys::fs::F_None);
+  print(Printer, "after building cfg", true);
 }
 
 void BinaryFunction::dumpGraphToFile(std::string Filename) const {

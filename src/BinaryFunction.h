@@ -879,6 +879,9 @@ public:
   /// Dump CFG in graphviz format to file.
   void dumpGraphToFile(std::string Filename) const;
 
+  /// Dump internal CFG representaton in a file with .txt extension
+  void dumpGraphToTextFile(std::string Annotation = "") const;
+
   /// Dump CFG in graphviz format to a file with a filename that is derived
   /// from the function name and Annotation strings.  Useful for dumping the
   /// CFG after an optimization pass.
