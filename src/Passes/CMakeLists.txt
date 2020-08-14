@@ -37,6 +37,7 @@ add_llvm_library(LLVMBOLTPasses
   StackPointerTracking.cpp
   StackReachingUses.cpp
   StaticBranchInfo.cpp
+  StaticBranchProbabilities.cpp
   StokeInfo.cpp
   ValidateInternalCalls.cpp
   VeneerElimination.cpp
