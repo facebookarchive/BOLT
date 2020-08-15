@@ -147,7 +147,7 @@ $ ninja clean && perf stat -e instructions,L1-icache-misses -- ninja clang -j48
 The number of misses per thousand instructions went down from 22 to 15, significantly reducing
 the number of stalls in the CPU front-end.
 Notice how the number of executed instructions stayed roughly the same. That's because we didn't
-run any optimizations beyound the ones affecting the code layout. Other than instruction cache misses,
+run any optimizations beyond the ones affecting the code layout. Other than instruction cache misses,
 BOLT also improves branch mispredictions, iTLB misses, and misses in L2 and L3.
 
 ## Using Clang for Other Applications
