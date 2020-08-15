@@ -45,11 +45,13 @@ cl::OptionCategory BoltOptCategory("BOLT optimization options");
 cl::OptionCategory BoltRelocCategory("BOLT options in relocation mode");
 cl::OptionCategory BoltOutputCategory("Output options");
 cl::OptionCategory AggregatorCategory("Data aggregation options");
+cl::OptionCategory InferenceCategory("BOLT static infered profile options");
 
 static cl::OptionCategory *BoltCategories[] = {&BoltCategory,
                                                &BoltOptCategory,
                                                &BoltRelocCategory,
-                                               &BoltOutputCategory};
+                                               &BoltOutputCategory,
+                                               &InferenceCategory};
 
 static cl::OptionCategory *BoltDiffCategories[] = {&BoltDiffCategory};
 
@@ -61,6 +63,7 @@ cl::SubCommand HeatmapCommand("heatmap", "generate heatmap");
 extern cl::opt<std::string> OutputFilename;
 extern cl::opt<bool> AggregateOnly;
 extern cl::opt<bool> DiffOnly;
+extern cl::opt<bool> GenFeatures;
 
 static cl::opt<std::string>
 InputDataFilename("data",
@@ -234,7 +237,7 @@ void boltMode(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv,
                               "BOLT - Binary Optimization and Layout Tool\n");
 
-  if (opts::OutputFilename.empty()) {
+  if (!opts::GenFeatures && opts::OutputFilename.empty()) {
     errs() << ToolName << ": expected -o=<output file> option.\n";
     exit(1);
   }

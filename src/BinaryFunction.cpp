@@ -53,8 +53,10 @@ namespace opts {
 extern cl::OptionCategory BoltCategory;
 extern cl::OptionCategory BoltOptCategory;
 extern cl::OptionCategory BoltRelocCategory;
+extern cl::OptionCategory InferenceCategory;
 
 extern cl::opt<bool> EnableBAT;
+extern cl::opt<bool> GenFeatures;
 extern cl::opt<bool> Instrument;
 extern cl::opt<bool> StrictMode;
 extern cl::opt<bool> UpdateDebugSections;
@@ -2822,7 +2824,7 @@ bool BinaryFunction::finalizeCFIState() {
 }
 
 bool BinaryFunction::requiresAddressTranslation() const {
-  return opts::EnableBAT || hasSDTMarker();
+  return opts::EnableBAT || hasSDTMarker() || opts::GenFeatures;
 }
 
 uint64_t BinaryFunction::getInstructionCount() const {
