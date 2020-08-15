@@ -30,6 +30,7 @@ add_llvm_library(LLVMBOLTPasses
   ReorderData.cpp
   ShrinkWrapping.cpp
   SplitFunctions.cpp
+  StaticBranchInfo.cpp
   StackAllocationAnalysis.cpp
   StackAvailableExpressions.cpp
   StackPointerTracking.cpp
