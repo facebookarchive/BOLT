@@ -151,6 +151,11 @@ DumpDotAll("dump-dot-all",
   cl::cat(BoltCategory));
 
 cl::opt<bool>
+DumpAll("dump-all",
+  cl::desc("dump function CFGs to text file format after each stage"),
+  cl::ZeroOrMore, cl::cat(BoltCategory));
+
+cl::opt<bool>
 GenFeatures("gen-features",
   cl::desc("capture features useful for training an ML model on branch behavior"
            " and save them in CSV format."),
@@ -2650,6 +2655,9 @@ void RewriteInstance::postProcessFunctions() {
 
     if (opts::DumpDotAll)
       Function.dumpGraphForPass("build-cfg");
+
+    if (opts::DumpAll)
+      Function.dumpGraphToTextFile();
 
     if (opts::PrintLoopInfo) {
       Function.calculateLoopInfo();

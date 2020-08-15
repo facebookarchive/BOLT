@@ -3121,6 +3121,14 @@ void BinaryFunction::dumpGraphForPass(std::string Annotation) const {
   dumpGraphToFile(Filename);
 }
 
+void BinaryFunction::dumpGraphToTextFile(std::string Annotation) const {
+  auto Filename = constructFilename(getPrintName(), Annotation, ".txt");
+  outs() << "BOLT-DEBUG: Dumping CFG to " << Filename << "\n";
+  std::error_code EC;
+  raw_fd_ostream Printer(Filename, EC, sys::fs::F_None);
+  print(Printer, "after building cfg", true);
+}
+
 void BinaryFunction::dumpGraphToFile(std::string Filename) const {
   std::error_code EC;
   raw_fd_ostream of(Filename, EC, sys::fs::F_None);
