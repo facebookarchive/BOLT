@@ -24,6 +24,7 @@
 #include "ExecutableFileMemoryManager.h"
 #include "MCPlusBuilder.h"
 #include "ParallelUtilities.h"
+#include "Passes/BlockEdgeFrequency.h"
 #include "Passes/FeatureMiner.h"
 #include "Passes/ReorderFunctions.h"
 #include "Relocation.h"
@@ -155,12 +156,6 @@ DumpAll("dump-all",
   cl::desc("dump function CFGs to text file format after each stage"),
   cl::ZeroOrMore, cl::cat(BoltCategory));
 
-cl::opt<bool>
-GenFeatures("gen-features",
-  cl::desc("capture features useful for training an ML model on branch behavior"
-           " and save them in CSV format."),
-  cl::ZeroOrMore, cl::cat(InferenceCategory));
-
 static cl::opt<bool>
 DumpEHFrame("dump-eh-frame",
   cl::desc("dump parsed .eh_frame (debugging)"),
@@ -176,11 +171,24 @@ ForceFunctionNames("funcs",
   cl::Hidden,
   cl::cat(BoltCategory));
 
+cl::opt<bool>
+FreqInference("infer-local-counts",
+  cl::desc("calculates local blocks and edge frequencies for a function based "
+  "on its probabilities."),
+  cl::ZeroOrMore,
+  cl::cat(InferenceCategory));
+
 static cl::opt<std::string>
 FunctionNamesFile("funcs-file",
   cl::desc("file with list of functions to optimize"),
   cl::Hidden,
   cl::cat(BoltCategory));
+
+cl::opt<bool>
+GenFeatures("gen-features",
+  cl::desc("capture features useful for training an ML model on branch behavior"
+           " and save them in CSV format."),
+  cl::ZeroOrMore, cl::cat(InferenceCategory));
 
 cl::opt<bool>
 HotFunctionsAtEnd(
@@ -568,6 +576,7 @@ void RewriteInstance::discoverStorage() {
     }
 
     if (!opts::GenFeatures && !opts::HeatmapMode &&
+        !opts::FreqInference && 
         !(opts::AggregateOnly && BAT->enabledFor(InputFile)) &&
         (SectionName.startswith(getOrgSecPrefix()) ||
          SectionName == getBOLTTextSectionName())) {
@@ -813,6 +822,12 @@ void RewriteInstance::run() {
         llvm::make_unique<FeatureMiner>(opts::GenFeatures);
     FM->runOnFunctions(*BC);
     return;
+  }
+
+  if(opts::FreqInference){
+    std::unique_ptr<BlockEdgeFrequency>  BEF =
+    llvm::make_unique<BlockEdgeFrequency>(opts::FreqInference);
+    BEF->runOnFunctions(*BC);
   }
 
   postProcessFunctions();
