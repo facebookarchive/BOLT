@@ -3,6 +3,7 @@ add_llvm_library(LLVMBOLTPasses
   AllocCombiner.cpp
   BinaryPasses.cpp
   BinaryFunctionCallGraph.cpp
+  BlockEdgeFrequency.cpp
   BranchHeuristicsInfo.cpp
   CallGraph.cpp
   CallGraphWalker.cpp

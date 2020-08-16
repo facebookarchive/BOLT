@@ -56,6 +56,7 @@ extern cl::OptionCategory BoltRelocCategory;
 extern cl::OptionCategory InferenceCategory;
 
 extern cl::opt<bool> EnableBAT;
+extern cl::opt<bool> FreqInference;
 extern cl::opt<bool> GenFeatures;
 extern cl::opt<bool> Instrument;
 extern cl::opt<bool> StrictMode;
@@ -2824,7 +2825,8 @@ bool BinaryFunction::finalizeCFIState() {
 }
 
 bool BinaryFunction::requiresAddressTranslation() const {
-  return opts::EnableBAT || hasSDTMarker() || opts::GenFeatures;
+  return opts::EnableBAT || hasSDTMarker() || 
+         opts::GenFeatures || opts::FreqInference;
 }
 
 uint64_t BinaryFunction::getInstructionCount() const {
