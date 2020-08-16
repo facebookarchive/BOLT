@@ -1,4 +1,4 @@
-//===--- Passes/StaticBranchProbabilities.cpp -----------------------------===//
+//===- Passes/StaticBranchProbabilities.cpp - Infered Branch Probabilities -===//
 //
 //                     The LLVM Compiler Infrastructure
 //
