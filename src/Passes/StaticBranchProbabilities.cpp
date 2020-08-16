@@ -1,4 +1,4 @@
-//===--- Passes/StaticBranchProbabilities.cpp -----------------------------===//
+//===- Passes/StaticBranchProbabilities.cpp - Infered Branch Probabilities -===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,60 +7,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
+//
 //===----------------------------------------------------------------------===//
 
-#include "Passes/StaticBranchProbabilities.h"
-#include "Passes/DataflowInfoManager.h"
-#include "Passes/RegAnalysis.h"
-#include "llvm/Object/Archive.h"
-#include "llvm/Object/Error.h"
-#include "llvm/Object/MachOUniversal.h"
-#include "llvm/Object/ObjectFile.h"
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Options.h"
+#include "Passes/BranchHeuristicsInfo.h"
 
 #undef DEBUG_TYPE
-#define DEBUG_TYPE "bolt-branch-prob"
-
-using namespace llvm;
-using namespace bolt;
-
-namespace opts {
-
-extern cl::OptionCategory InferenceCategory;
-
-cl::opt<bolt::StaticBranchProbabilities::HeuristicType> HeuristicBased(
-    "heuristic-based",
-    cl::desc("generates probabilities statically based on heuristics."),
-    cl::values(clEnumValN(bolt::StaticBranchProbabilities::H_ALWAYS_TAKEN,
-                          "always", "set as 1 the weight of taken BB edges"),
-               clEnumValN(bolt::StaticBranchProbabilities::H_NEVER_TAKEN,
-                          "never",
-                          "set as 1 the weight of fallthrough BB edges"),
-               clEnumValN(bolt::StaticBranchProbabilities::H_WEAKLY_TAKEN,
-                          "weakly-taken",
-                          "set as 0.2 the weight of taken BB edges "
-                          "and set as 0.8 the weight of "
-                          "fallthrough BB edges"),
-               clEnumValN(bolt::StaticBranchProbabilities::H_WEAKLY_NOT_TAKEN,
-                          "weakly-not-taken",
-                          "set as 0.8 the weight of taken BB edges "
-                          "and set as 0.2 the weight of "
-                          "fallthrough BB edges"),
-               clEnumValN(bolt::StaticBranchProbabilities::H_UNBIASED,
-                          "unbiased", "set as 0.5 the weight of all BB edges"),
-               clEnumValN(bolt::StaticBranchProbabilities::H_WU_LARUS,
-                          "wularus",
-                          "use as edge weights the combined the outcome "
-                          "of the some of the heuritics described "
-                          "in Wu Larus paper")),
-    cl::ZeroOrMore, cl::cat(InferenceCategory));
-
-cl::opt<bool> MLBased("ml-based",
-                      cl::desc("reads probabilities based on ML model."),
-                      cl::ZeroOrMore, cl::Hidden, cl::cat(InferenceCategory));
-} // namespace opts
+#define DEBUG_TYPE "bolt-branch-heuristics"
 
 namespace llvm {
 namespace bolt {
