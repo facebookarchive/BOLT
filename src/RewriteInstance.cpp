@@ -767,6 +767,7 @@ void RewriteInstance::run() {
          << Triple::getArchTypeName(
                 (llvm::Triple::ArchType)InputFile->getArch())
          << "\n";
+  outs() << "BOLT-INFO: BOLT version: " << BoltRevision << "\n";
 
   discoverStorage();
   readSpecialSections();
