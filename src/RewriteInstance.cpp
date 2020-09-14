@@ -3973,8 +3973,7 @@ void RewriteInstance::updateELFSymbolTable(
     if (!PatchExisting && shouldStrip(Symbol))
       continue;
 
-    const auto *Function = BC->getBinaryFunctionAtAddress(Symbol.st_value,
-                                                          /*Shallow=*/true);
+    const auto *Function = BC->getBinaryFunctionAtAddress(Symbol.st_value);
     // Ignore false function references, e.g. when the section address matches
     // the address of the function.
     if (Function && Symbol.getType() == ELF::STT_SECTION)
@@ -4013,8 +4012,7 @@ void RewriteInstance::updateELFSymbolTable(
       Function = (Symbol.getType() == ELF::STT_FUNC)
         ? BC->getBinaryFunctionContainingAddress(Symbol.st_value,
                                                  /*CheckPastEnd=*/false,
-                                                 /*UseMaxSize=*/true,
-                                                 /*Shallow=*/true)
+                                                 /*UseMaxSize=*/true)
         : nullptr;
 
       if (Function && Function->isEmitted()) {
@@ -4062,8 +4060,7 @@ void RewriteInstance::updateELFSymbolTable(
             Symbol.st_size == 0) {
           if (BC->getBinaryFunctionContainingAddress(Symbol.st_value,
                                                      /*CheckPastEnd=*/false,
-                                                     /*UseMaxSize=*/true,
-                                                     /*Shallow=*/true)) {
+                                                     /*UseMaxSize=*/true)) {
             // Can only delete the symbol if not patching. Such symbols should
             // not exist in the dynamic symbol table.
             assert(!PatchExisting && "cannot delete symbol");
@@ -4470,10 +4467,12 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
 
 
 uint64_t RewriteInstance::getNewFunctionAddress(uint64_t OldAddress) {
-  const auto *Function = BC->getBinaryFunctionAtAddress(OldAddress,
-                                                        /*Shallow=*/true);
+  const auto *Function = BC->getBinaryFunctionAtAddress(OldAddress);
   if (!Function)
     return 0;
+
+  assert(!Function->isFragment() && "cannot get new address for a fragment");
+
   return Function->getOutputAddress();
 }
 
