@@ -5,7 +5,7 @@ It achieves the improvements by optimizing application's code layout based on
 execution profile gathered by sampling profiler, such as Linux `perf` tool.
 An overview of the ideas implemented in BOLT along with a discussion of its
 potential and current results is available in
-an [arXiv paper](https://arxiv.org/abs/1807.06735).
+[CGO'19 paper](https://research.fb.com/publications/bolt-a-practical-binary-optimizer-for-data-centers-and-beyond/).
 
 ## Input Binary Requirements
 
@@ -34,6 +34,13 @@ PIE and .so support has been added recently. Please report bugs if you
 encounter any issues.
 
 ## Installation
+
+### Docker Image
+
+You can build and use the docker image containing BOLT using our [docker file](./utils/docker/Dockerfile).
+Alternatively, you can build BOLT manually using the steps below.
+
+### Manual Build
 
 BOLT heavily uses LLVM libraries, and by design, it is built as one of LLVM
 tools. The build process is not much different from a regular LLVM build.
