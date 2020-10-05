@@ -1778,13 +1778,9 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
 
   auto Value = BC->getUnsignedValueAtAddress(Rel.getOffset(), RelSize);
   assert(Value && "failed to extract relocated value");
-  ExtractedValue = *Value;
-  if (IsAArch64) {
-    ExtractedValue = Relocation::extractValue(RType,
-                                              ExtractedValue,
-                                              Rel.getOffset());
-  }
-
+  ExtractedValue = Relocation::extractValue(RType,
+                                            *Value,
+                                            Rel.getOffset());
   Addend = getRelocationAddend(InputFile, Rel);
 
   const auto IsPCRelative = Relocation::isPCRelative(RType);
