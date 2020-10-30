@@ -145,6 +145,22 @@ a VM or on hardware that does not support it, then you can use only sample
 events, such as cycles. In this case, the quality of the profile information
 would not be as good, and performance gains with BOLT are expected to be lower.
 
+#### With instrumentation (experimental)
+
+If perf record is not available to you, you may collect profile by first
+instrumenting the binary with BOLT and then running it.
+```
+llvm-bolt <executable> -instrument -o <instrumented-executable>
+```
+
+After you run instrumented-executable with the desired workload, its BOLT
+profile should be ready for you in `/tmp/prof.fdata` and you can skip
+**Step 2**.
+
+Run BOLT with the `-help` option and check the category "BOLT instrumentation
+options" for a quick reference on instrumentation knobs. Instrumentation is
+experimental and currently does not work for PIEs/SOs.
+
 ### Step 2: Convert Profile to BOLT Format
 
 NOTE: you can skip this step and feed `perf.data` directly to BOLT using
