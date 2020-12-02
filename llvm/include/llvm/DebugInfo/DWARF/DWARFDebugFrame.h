@@ -16,6 +16,7 @@
 #include "llvm/DebugInfo/DWARF/DWARFDataExtractor.h"
 #include "llvm/DebugInfo/DWARF/DWARFExpression.h"
 #include "llvm/Support/Error.h"
+#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
@@ -661,9 +662,20 @@ public:
   void dump(raw_ostream &OS, DIDumpOptions DumpOpts, const MCRegisterInfo *MRI,
             Optional<uint64_t> Offset) const;
 
+  using RefHandlerType =
+    std::function<void(uint64_t, uint64_t, uint64_t)>;
+
   /// Parse the section from raw data. \p Data is assumed to contain the whole
   /// frame section contents to be parsed.
-  Error parse(DWARFDataExtractor Data);
+  /// If non-null RefHandler is passed, call it for every encountered external
+  /// reference in frame data. The expected signature is:
+  ///
+  ///   void RefHandler(uint64_t Value, uint64_t Offset, uint64_t Type);
+  ///
+  /// where Value is a value of the reference, Offset - is an offset into the
+  /// frame data at which the reference occured, and Type is a DWARF encoding
+  /// type of the reference.
+  Error parse(DWARFDataExtractor Data, RefHandlerType RefHandler= nullptr);
 
   /// Return whether the section has any entries.
   bool empty() const { return Entries.empty(); }
@@ -674,6 +686,11 @@ public:
   iterator_range<iterator> entries() const {
     return iterator_range<iterator>(Entries.begin(), Entries.end());
   }
+
+  using FDEFunction = std::function<void(const dwarf::FDE *)>;
+
+  /// Call function F for every FDE in the frame.
+  void for_each_FDE(FDEFunction F) const;
 
   uint64_t getEHFrameAddress() const { return EHFrameAddress; }
 };

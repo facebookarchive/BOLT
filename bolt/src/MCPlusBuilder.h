@@ -33,7 +33,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/ErrorOr.h"
-#include "llvm/Support/StringPool.h"
 #include <cassert>
 #include <cstdint>
 #include <map>
@@ -153,14 +152,6 @@ protected:
   const MCInstrAnalysis *Analysis;
   const MCInstrInfo *Info;
   const MCRegisterInfo *RegInfo;
-
-  /// Hash a PooledStringPtr.  It's ok to use the address since all these
-  /// strings are interned.
-  struct HashPooledStringPtr {
-    size_t operator()(const PooledStringPtr &Str) const {
-      return reinterpret_cast<size_t>(Str.begin());
-    }
-  };
 
   /// Map annotation name into an annotation index.
   StringMap<uint64_t> AnnotationNameIndexMap;
@@ -983,7 +974,7 @@ public:
   /// ConstantData array starting from \p offset and assuming little-endianess.
   /// Return true on success. The given instruction is modified in place.
   virtual bool replaceMemOperandWithImm(MCInst &Inst, StringRef ConstantData,
-                                        uint32_t Offset) const {
+                                        uint64_t Offset) const {
     llvm_unreachable("not implemented");
     return false;
   }
@@ -1068,7 +1059,7 @@ public:
 
   /// Return MCSymbol extracted from a target expression
   virtual const MCSymbol *getTargetSymbol(const MCExpr *Expr) const {
-    return &Expr->getSymbol();
+    return &cast<const MCSymbolRefExpr>(Expr)->getSymbol();
   }
 
   /// Return MCSymbol/offset extracted from a target expression
@@ -1510,10 +1501,17 @@ public:
     return false;
   }
 
+  /// Return the conditional code used in a conditional jump instruction.
+  /// Returns invalid code if not conditional jump.
+  virtual unsigned getCondCode(const MCInst &Inst) const {
+    llvm_unreachable("not implemented");
+    return false;
+  }
+
   /// Return canonical branch opcode for a reversible branch opcode. For every
   /// opposite branch opcode pair Op <-> OpR this function returns one of the
   /// opcodes which is considered a canonical.
-  virtual unsigned getCanonicalBranchOpcode(unsigned BranchOpcode) const {
+  virtual unsigned getCanonicalBranchCondCode(unsigned CC) const {
     llvm_unreachable("not implemented");
     return false;
   }
@@ -1554,7 +1552,7 @@ public:
     const auto Index =
         AnnotationNameIndexMap.size() + MCPlus::MCAnnotation::kGeneric;
     AnnotationNameIndexMap.insert(std::make_pair(Name, Index));
-    AnnotationNames.push_back(Name);
+    AnnotationNames.emplace_back(std::string(Name));
     return Index;
   }
 
