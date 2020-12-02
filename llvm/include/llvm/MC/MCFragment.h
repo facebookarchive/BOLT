@@ -34,6 +34,7 @@ class MCFragment : public ilist_node_with_parent<MCFragment, MCSection> {
 public:
   enum FragmentType : uint8_t {
     FT_Align,
+    FT_NeverAlign,
     FT_Data,
     FT_CompactEncodedInst,
     FT_Fill,
@@ -330,6 +331,41 @@ public:
 
   static bool classof(const MCFragment *F) {
     return F->getKind() == MCFragment::FT_Align;
+  }
+};
+
+class MCNeverAlignFragment : public MCFragment {
+  /// Alignment - The alignment the end of the next fragment should avoid
+  unsigned Alignment;
+
+  /// EmitNops - Flag to indicate that (optimal) NOPs should be emitted instead
+  /// of using the provided value. The exact interpretation of this flag is
+  /// target dependent.
+  bool EmitNops : 1;
+
+  /// Value - Value to use for filling padding bytes.
+  int64_t Value;
+
+  /// ValueSize - The size of the integer (in bytes) of \p Value.
+  unsigned ValueSize;
+
+public:
+  MCNeverAlignFragment(unsigned Alignment, int64_t Value, unsigned ValueSize,
+                       MCSection *Sec = nullptr)
+      : MCFragment(FT_NeverAlign, false, Sec), Alignment(Alignment),
+        EmitNops(false), Value(Value), ValueSize(ValueSize) {}
+
+  unsigned getAlignment() const { return Alignment; }
+
+  int64_t getValue() const { return Value; }
+
+  unsigned getValueSize() const { return ValueSize; }
+
+  bool hasEmitNops() const { return EmitNops; }
+  void setEmitNops(bool Value) { EmitNops = Value; }
+
+  static bool classof(const MCFragment *F) {
+    return F->getKind() == MCFragment::FT_NeverAlign;
   }
 };
 
