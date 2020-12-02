@@ -346,6 +346,11 @@ bool COFFObjectFile::isSectionVirtual(DataRefImpl Ref) const {
   return Sec->PointerToRawData == 0;
 }
 
+bool COFFObjectFile::isSectionReadOnly(DataRefImpl Ref) const {
+  llvm_unreachable("not implemented");
+  return false;
+}
+
 static uint32_t getNumberOfRelocations(const coff_section *Sec,
                                        MemoryBufferRef M, const uint8_t *base) {
   // The field for the number of relocations in COFF section table is only

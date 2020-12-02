@@ -139,6 +139,8 @@ public:
                             unsigned MaxBytesToEmit = 0) override;
   void emitCodeAlignment(unsigned ByteAlignment,
                          unsigned MaxBytesToEmit = 0) override;
+  void emitNeverAlignCodeAtEnd(unsigned ByteAlignment, int64_t Value = 0,
+                               unsigned ValueSize = 1) override;
   void emitValueToOffset(const MCExpr *Offset, unsigned char Value,
                          SMLoc Loc) override;
   void emitDwarfLocDirective(unsigned FileNo, unsigned Line, unsigned Column,
@@ -149,6 +151,9 @@ public:
                                 const MCSymbol *Label,
                                 unsigned PointerSize) override;
   void emitDwarfLineEndEntry(MCSection *Section, MCSymbol *LastLabel) override;
+  void emitDwarfAdvanceLineAddrAbs(int64_t LineDelta, uint64_t Address,
+                                   uint64_t AddressDelta,
+                                   unsigned PointerSize) override;
   void emitDwarfAdvanceFrameAddr(const MCSymbol *LastLabel,
                                  const MCSymbol *Label);
   void emitCVLocDirective(unsigned FunctionId, unsigned FileNo, unsigned Line,

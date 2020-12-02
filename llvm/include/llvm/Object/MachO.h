@@ -319,6 +319,7 @@ public:
   /// to reading the number of bytes specified in the load command, starting
   /// from offset 0 (i.e. the Mach-O header at the beginning of the file).
   bool isSectionStripped(DataRefImpl Sec) const override;
+  bool isSectionReadOnly(DataRefImpl Sec) const override;
 
   relocation_iterator section_rel_begin(DataRefImpl Sec) const override;
   relocation_iterator section_rel_end(DataRefImpl Sec) const override;

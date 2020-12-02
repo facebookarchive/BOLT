@@ -550,6 +550,11 @@ public:
     return *this;
   }
 
+  friend BitVector operator|(BitVector LHS, const BitVector &RHS) {
+    LHS |= RHS;
+    return LHS;
+  }
+
   BitVector &operator^=(const BitVector &RHS) {
     if (size() < RHS.size())
       resize(RHS.size());
