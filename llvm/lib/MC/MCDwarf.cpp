@@ -171,11 +171,26 @@ static inline void emitDwarfLineTable(
   unsigned Flags = DWARF2_LINE_DEFAULT_IS_STMT ? DWARF2_FLAG_IS_STMT : 0;
   unsigned Isa = 0;
   unsigned Discriminator = 0;
+  uint64_t LastAddress = -1ULL;
   MCSymbol *LastLabel = nullptr;
+  const MCAsmInfo *AsmInfo = MCOS->getContext().getAsmInfo();
 
   // Loop through each MCDwarfLineEntry and encode the dwarf line number table.
-  for (const MCDwarfLineEntry &LineEntry : LineEntries) {
+  for (auto it = LineEntries.begin(),
+            ie = LineEntries.end();
+       it != ie; ++it) {
+    const MCDwarfLineEntry &LineEntry = *it;
     int64_t LineDelta = static_cast<int64_t>(LineEntry.getLine()) - LastLine;
+
+    const uint64_t Address = LineEntry.getAbsoluteAddr();
+    if (Address != -1ULL && std::next(it) == ie) {
+      // If emitting absolute addresses, the last entry only carries address
+      // info for the DW_LNE_end_sequence. This entry compensates for the lack
+      // of the section context used to emit the end of section label.
+      MCOS->emitDwarfAdvanceLineAddrAbs(INT64_MAX, -1ULL, Address - LastAddress,
+                                        AsmInfo->getCodePointerSize());
+      return;
+    }
 
     if (FileNum != LineEntry.getFileNum()) {
       FileNum = LineEntry.getFileNum();
@@ -212,18 +227,34 @@ static inline void emitDwarfLineTable(
     if (LineEntry.getFlags() & DWARF2_FLAG_EPILOGUE_BEGIN)
       MCOS->emitInt8(dwarf::DW_LNS_set_epilogue_begin);
 
-    MCSymbol *Label = LineEntry.getLabel();
+    if (Address == -1ULL) {
+      assert(LastAddress == -1ULL &&
+             "Absolute addresses can only be added at the end of the table.");
 
-    // At this point we want to emit/create the sequence to encode the delta in
-    // line numbers and the increment of the address from the previous Label
-    // and the current Label.
-    const MCAsmInfo *asmInfo = MCOS->getContext().getAsmInfo();
-    MCOS->emitDwarfAdvanceLineAddr(LineDelta, LastLabel, Label,
-                                   asmInfo->getCodePointerSize());
+      MCSymbol *Label = LineEntry.getLabel();
+
+      // At this point we want to emit/create the sequence to encode the delta
+      // in line numbers and the increment of the address from the previous
+      // Label and the current Label.
+      MCOS->emitDwarfAdvanceLineAddr(LineDelta, LastLabel, Label,
+                                     AsmInfo->getCodePointerSize());
+      LastLabel = Label;
+      LastAddress = -1ULL;
+    } else {
+      if (LastAddress == -1ULL) {
+        MCOS->emitDwarfAdvanceLineAddrAbs(LineDelta, Address, 0,
+                                          AsmInfo->getCodePointerSize());
+      } else {
+        MCOS->emitDwarfAdvanceLineAddrAbs(LineDelta, -1ULL,
+                                          Address - LastAddress,
+                                          AsmInfo->getCodePointerSize());
+      }
+      LastAddress = Address;
+      LastLabel = nullptr;
+    }
 
     Discriminator = 0;
     LastLine = LineEntry.getLine();
-    LastLabel = Label;
   }
 
   // Generate DWARF line end entry.
@@ -1332,10 +1363,215 @@ public:
   void emitCFIInstruction(const MCCFIInstruction &Instr);
 };
 
+// A stripped-down version of MCObjectStreamer that only calculates how many
+// bytes were written to it. We use it to know in advance how many bytes
+// DWARF expressions will use.
+class SizeCalcMCStreamer {
+  uint64_t TotalSize = {0};
+
+public:
+  SizeCalcMCStreamer() {}
+
+  uint64_t getSize() { return TotalSize; }
+
+  void emitIntValue(uint64_t Value, unsigned Size) { TotalSize += Size; }
+
+  void emitULEB128IntValue(uint64_t Value, unsigned Padding = 0) {
+    TotalSize += Padding + getULEB128Size(Value);
+  }
+
+  void emitSLEB128IntValue(int64_t Value) {
+    TotalSize += getSLEB128Size(Value);
+  }
+};
+
 } // end anonymous namespace
 
 static void emitEncodingByte(MCObjectStreamer &Streamer, unsigned Encoding) {
   Streamer.emitInt8(Encoding);
+}
+
+template <typename T>
+static void EmitDwarfExpression(T &Streamer,
+                                const MCDwarfExpression &Expr) {
+  for (const auto &Elem : Expr) {
+    Streamer.emitIntValue(Elem.Operation, 1);
+    switch (Elem.Operation) {
+    default:
+      llvm_unreachable("Unrecognized DWARF expression opcode");
+    case dwarf::DW_OP_addr:
+    case dwarf::DW_OP_call_ref:
+      llvm_unreachable("DW_OP_addr & DW_OP_call_ref are unimplemented");
+      break;
+    case dwarf::DW_OP_const1u:
+    case dwarf::DW_OP_const1s:
+    case dwarf::DW_OP_pick:
+    case dwarf::DW_OP_deref_size:
+    case dwarf::DW_OP_xderef_size:
+      Streamer.emitIntValue(Elem.Operand0, 1);
+      break;
+    case dwarf::DW_OP_const2u:
+    case dwarf::DW_OP_const2s:
+    case dwarf::DW_OP_skip:
+    case dwarf::DW_OP_bra:
+    case dwarf::DW_OP_call2:
+      Streamer.emitIntValue(Elem.Operand0, 2);
+      break;
+    case dwarf::DW_OP_const4u:
+    case dwarf::DW_OP_const4s:
+    case dwarf::DW_OP_call4:
+      Streamer.emitIntValue(Elem.Operand0, 4);
+      break;
+    case dwarf::DW_OP_const8u:
+    case dwarf::DW_OP_const8s:
+      Streamer.emitIntValue(Elem.Operand0, 8);
+      break;
+    case dwarf::DW_OP_constu:
+    case dwarf::DW_OP_plus_uconst:
+    case dwarf::DW_OP_regx:
+    case dwarf::DW_OP_piece:
+    case dwarf::DW_OP_GNU_addr_index:
+    case dwarf::DW_OP_GNU_const_index:
+      Streamer.emitULEB128IntValue(Elem.Operand0);
+      break;
+    case dwarf::DW_OP_consts:
+    case dwarf::DW_OP_breg0:
+    case dwarf::DW_OP_breg1:
+    case dwarf::DW_OP_breg2:
+    case dwarf::DW_OP_breg3:
+    case dwarf::DW_OP_breg4:
+    case dwarf::DW_OP_breg5:
+    case dwarf::DW_OP_breg6:
+    case dwarf::DW_OP_breg7:
+    case dwarf::DW_OP_breg8:
+    case dwarf::DW_OP_breg9:
+    case dwarf::DW_OP_breg10:
+    case dwarf::DW_OP_breg11:
+    case dwarf::DW_OP_breg12:
+    case dwarf::DW_OP_breg13:
+    case dwarf::DW_OP_breg14:
+    case dwarf::DW_OP_breg15:
+    case dwarf::DW_OP_breg16:
+    case dwarf::DW_OP_breg17:
+    case dwarf::DW_OP_breg18:
+    case dwarf::DW_OP_breg19:
+    case dwarf::DW_OP_breg20:
+    case dwarf::DW_OP_breg21:
+    case dwarf::DW_OP_breg22:
+    case dwarf::DW_OP_breg23:
+    case dwarf::DW_OP_breg24:
+    case dwarf::DW_OP_breg25:
+    case dwarf::DW_OP_breg26:
+    case dwarf::DW_OP_breg27:
+    case dwarf::DW_OP_breg28:
+    case dwarf::DW_OP_breg29:
+    case dwarf::DW_OP_breg30:
+    case dwarf::DW_OP_breg31:
+    case dwarf::DW_OP_fbreg:
+      Streamer.emitSLEB128IntValue(Elem.Operand0);
+      break;
+    case dwarf::DW_OP_deref:
+    case dwarf::DW_OP_dup:
+    case dwarf::DW_OP_drop:
+    case dwarf::DW_OP_over:
+    case dwarf::DW_OP_swap:
+    case dwarf::DW_OP_rot:
+    case dwarf::DW_OP_xderef:
+    case dwarf::DW_OP_abs:
+    case dwarf::DW_OP_and:
+    case dwarf::DW_OP_div:
+    case dwarf::DW_OP_minus:
+    case dwarf::DW_OP_mod:
+    case dwarf::DW_OP_mul:
+    case dwarf::DW_OP_neg:
+    case dwarf::DW_OP_not:
+    case dwarf::DW_OP_or:
+    case dwarf::DW_OP_plus:
+    case dwarf::DW_OP_shl:
+    case dwarf::DW_OP_shr:
+    case dwarf::DW_OP_shra:
+    case dwarf::DW_OP_xor:
+    case dwarf::DW_OP_eq:
+    case dwarf::DW_OP_ge:
+    case dwarf::DW_OP_gt:
+    case dwarf::DW_OP_le:
+    case dwarf::DW_OP_lt:
+    case dwarf::DW_OP_ne:
+    case dwarf::DW_OP_lit0:
+    case dwarf::DW_OP_lit1:
+    case dwarf::DW_OP_lit2:
+    case dwarf::DW_OP_lit3:
+    case dwarf::DW_OP_lit4:
+    case dwarf::DW_OP_lit5:
+    case dwarf::DW_OP_lit6:
+    case dwarf::DW_OP_lit7:
+    case dwarf::DW_OP_lit8:
+    case dwarf::DW_OP_lit9:
+    case dwarf::DW_OP_lit10:
+    case dwarf::DW_OP_lit11:
+    case dwarf::DW_OP_lit12:
+    case dwarf::DW_OP_lit13:
+    case dwarf::DW_OP_lit14:
+    case dwarf::DW_OP_lit15:
+    case dwarf::DW_OP_lit16:
+    case dwarf::DW_OP_lit17:
+    case dwarf::DW_OP_lit18:
+    case dwarf::DW_OP_lit19:
+    case dwarf::DW_OP_lit20:
+    case dwarf::DW_OP_lit21:
+    case dwarf::DW_OP_lit22:
+    case dwarf::DW_OP_lit23:
+    case dwarf::DW_OP_lit24:
+    case dwarf::DW_OP_lit25:
+    case dwarf::DW_OP_lit26:
+    case dwarf::DW_OP_lit27:
+    case dwarf::DW_OP_lit28:
+    case dwarf::DW_OP_lit29:
+    case dwarf::DW_OP_lit30:
+    case dwarf::DW_OP_lit31:
+    case dwarf::DW_OP_reg0:
+    case dwarf::DW_OP_reg1:
+    case dwarf::DW_OP_reg2:
+    case dwarf::DW_OP_reg3:
+    case dwarf::DW_OP_reg4:
+    case dwarf::DW_OP_reg5:
+    case dwarf::DW_OP_reg6:
+    case dwarf::DW_OP_reg7:
+    case dwarf::DW_OP_reg8:
+    case dwarf::DW_OP_reg9:
+    case dwarf::DW_OP_reg10:
+    case dwarf::DW_OP_reg11:
+    case dwarf::DW_OP_reg12:
+    case dwarf::DW_OP_reg13:
+    case dwarf::DW_OP_reg14:
+    case dwarf::DW_OP_reg15:
+    case dwarf::DW_OP_reg16:
+    case dwarf::DW_OP_reg17:
+    case dwarf::DW_OP_reg18:
+    case dwarf::DW_OP_reg19:
+    case dwarf::DW_OP_reg20:
+    case dwarf::DW_OP_reg21:
+    case dwarf::DW_OP_reg22:
+    case dwarf::DW_OP_reg23:
+    case dwarf::DW_OP_reg24:
+    case dwarf::DW_OP_reg25:
+    case dwarf::DW_OP_reg26:
+    case dwarf::DW_OP_reg27:
+    case dwarf::DW_OP_reg28:
+    case dwarf::DW_OP_reg29:
+    case dwarf::DW_OP_reg30:
+    case dwarf::DW_OP_reg31:
+    case dwarf::DW_OP_nop:
+    case dwarf::DW_OP_push_object_address:
+    case dwarf::DW_OP_form_tls_address:
+    case dwarf::DW_OP_GNU_push_tls_address:
+      break;
+    case dwarf::DW_OP_bregx:
+      Streamer.emitULEB128IntValue(Elem.Operand0);
+      Streamer.emitSLEB128IntValue(Elem.Operand1);
+      break;
+    }
+  }
 }
 
 void FrameEmitterImpl::emitCFIInstruction(const MCCFIInstruction &Instr) {
@@ -1462,6 +1698,28 @@ void FrameEmitterImpl::emitCFIInstruction(const MCCFIInstruction &Instr) {
     Streamer.emitULEB128IntValue(Instr.getOffset());
     return;
 
+  case MCCFIInstruction::OpDefCfaExpression: {
+    Streamer.emitIntValue(dwarf::DW_CFA_def_cfa_expression, 1);
+    SizeCalcMCStreamer FakeStreamer;
+    EmitDwarfExpression<>(FakeStreamer, Instr.getExpression());
+    Streamer.emitULEB128IntValue(FakeStreamer.getSize());
+    EmitDwarfExpression<>(Streamer, Instr.getExpression());
+    return;
+  }
+  case MCCFIInstruction::OpExpression:
+  case MCCFIInstruction::OpValExpression: {
+    unsigned Reg = Instr.getRegister();
+    Streamer.emitIntValue(Instr.getOperation() == MCCFIInstruction::OpExpression
+                              ? dwarf::DW_CFA_expression
+                              : dwarf::DW_CFA_val_expression,
+                          1);
+    Streamer.emitULEB128IntValue(Reg);
+    SizeCalcMCStreamer FakeStreamer;
+    EmitDwarfExpression<>(FakeStreamer, Instr.getExpression());
+    Streamer.emitULEB128IntValue(FakeStreamer.getSize());
+    EmitDwarfExpression<>(Streamer, Instr.getExpression());
+    return;
+  }
   case MCCFIInstruction::OpEscape:
     Streamer.emitBytes(Instr.getValues());
     return;
