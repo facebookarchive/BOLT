@@ -79,7 +79,7 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
       switch (CFI->getOperation()) {
       case MCCFIInstruction::OpRegister: {
         const auto CFIReg2 = CFI->getRegister2();
-        const MCPhysReg Reg2 = BC.MRI->getLLVMRegNum(CFIReg2, /*isEH=*/false);
+        const MCPhysReg Reg2 = *BC.MRI->getLLVMRegNum(CFIReg2, /*isEH=*/false);
         if (AliasA.test(Reg2)) {
           CFI->setRegister2(BC.MRI->getDwarfRegNum(
               BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg2)), false));
@@ -88,7 +88,7 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
               BC.MIB->getAliasSized(A, BC.MIB->getRegSize(Reg2)), false));
         }
       }
-      // Fall-through
+      LLVM_FALLTHROUGH;
       case MCCFIInstruction::OpUndefined:
       case MCCFIInstruction::OpDefCfa:
       case MCCFIInstruction::OpOffset:
@@ -99,7 +99,7 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
       case MCCFIInstruction::OpExpression:
       case MCCFIInstruction::OpValExpression: {
         const auto CFIReg = CFI->getRegister();
-        const MCPhysReg Reg = BC.MRI->getLLVMRegNum(CFIReg, /*isEH=*/false);
+        const MCPhysReg Reg = *BC.MRI->getLLVMRegNum(CFIReg, /*isEH=*/false);
         if (AliasA.test(Reg)) {
           CFI->setRegister(BC.MRI->getDwarfRegNum(
               BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg)), false));
@@ -180,7 +180,7 @@ void RegReAssign::rankRegisters(BinaryContext &BC, BinaryFunction &Function) {
   std::sort(RankedRegs.begin(), RankedRegs.end(),
             [&](size_t A, size_t B) { return RegScore[A] > RegScore[B]; });
 
-  DEBUG({
+  LLVM_DEBUG({
     for (auto Reg : RankedRegs) {
       if (RegScore[Reg] == 0)
         continue;
@@ -259,34 +259,34 @@ void RegReAssign::aggressivePassOverFunction(BinaryContext &BC,
     }
 
     if (RegScore[ClassicReg] << 1 >= RegScore[ExtReg]) {
-      DEBUG(dbgs() << " Ending at " << BC.MRI->getName(ClassicReg) << " with "
-                   << BC.MRI->getName(ExtReg)
-                   << " because exchange is not profitable\n");
+      LLVM_DEBUG(dbgs() << " Ending at " << BC.MRI->getName(ClassicReg)
+                        << " with " << BC.MRI->getName(ExtReg)
+                        << " because exchange is not profitable\n");
       break;
     }
 
     BitVector AnyAliasAlive = AliveAtStart;
     AnyAliasAlive &= BC.MIB->getAliases(ClassicReg);
     if (AnyAliasAlive.any()) {
-      DEBUG(dbgs() << " Bailed on " << BC.MRI->getName(ClassicReg) << " with "
-                   << BC.MRI->getName(ExtReg)
-                   << " because classic reg is alive\n");
+      LLVM_DEBUG(dbgs() << " Bailed on " << BC.MRI->getName(ClassicReg)
+                        << " with " << BC.MRI->getName(ExtReg)
+                        << " because classic reg is alive\n");
       --End;
       continue;
     }
     AnyAliasAlive = AliveAtStart;
     AnyAliasAlive &= BC.MIB->getAliases(ExtReg);
     if (AnyAliasAlive.any()) {
-      DEBUG(dbgs() << " Bailed on " << BC.MRI->getName(ClassicReg) << " with "
-                   << BC.MRI->getName(ExtReg)
-                   << " because extended reg is alive\n");
+      LLVM_DEBUG(dbgs() << " Bailed on " << BC.MRI->getName(ClassicReg)
+                        << " with " << BC.MRI->getName(ExtReg)
+                        << " because extended reg is alive\n");
       ++Begin;
       continue;
     }
 
     // Opportunity detected. Swap.
-    DEBUG(dbgs() << "\n ** Swapping " << BC.MRI->getName(ClassicReg) << " with "
-          << BC.MRI->getName(ExtReg) << "\n\n");
+    LLVM_DEBUG(dbgs() << "\n ** Swapping " << BC.MRI->getName(ClassicReg)
+                      << " with " << BC.MRI->getName(ExtReg) << "\n\n");
     swap(BC, Function, ClassicReg, ExtReg);
     FuncsChanged.insert(&Function);
     ++Begin;
@@ -328,8 +328,8 @@ bool RegReAssign::conservativePassOverFunction(BinaryContext &BC,
   if (!RBX)
     return false;
 
-  DEBUG(dbgs() << "\n ** Swapping " << BC.MRI->getName(RBX) << " with "
-               << BC.MRI->getName(Candidate) << "\n\n");
+  LLVM_DEBUG(dbgs() << "\n ** Swapping " << BC.MRI->getName(RBX) << " with "
+                    << BC.MRI->getName(Candidate) << "\n\n");
   swap(BC, Function, RBX, Candidate);
   FuncsChanged.insert(&Function);
   return true;
@@ -365,7 +365,7 @@ void RegReAssign::setupConservativePass(
   ExtendedCSR.flip();
   ExtendedCSR &= CalleeSaved;
 
-  DEBUG({
+  LLVM_DEBUG({
     RegStatePrinter P(BC);
     dbgs() << "Starting register reassignment\nClassicRegs: ";
     P.print(dbgs(), ClassicRegs);
@@ -394,12 +394,12 @@ void RegReAssign::runOnFunctions(BinaryContext &BC) {
     if (!Function.isSimple() || Function.isIgnored())
       continue;
 
-    DEBUG(dbgs() << "====================================\n");
-    DEBUG(dbgs() << " - " << Function.getPrintName() << "\n");
+    LLVM_DEBUG(dbgs() << "====================================\n");
+    LLVM_DEBUG(dbgs() << " - " << Function.getPrintName() << "\n");
     if (!conservativePassOverFunction(BC, Function) &&
         opts::AggressiveReAssign) {
       aggressivePassOverFunction(BC, Function);
-      DEBUG({
+      LLVM_DEBUG({
         if (FuncsChanged.count(&Function)) {
           dbgs() << "Aggressive pass successful on " << Function.getPrintName()
                  << "\n";

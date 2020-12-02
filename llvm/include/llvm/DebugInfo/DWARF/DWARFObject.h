@@ -42,6 +42,7 @@ public:
   virtual StringRef getArangesSection() const { return ""; }
   virtual const DWARFSection &getFrameSection() const { return Dummy; }
   virtual const DWARFSection &getEHFrameSection() const { return Dummy; }
+  virtual uint64_t getEHFrameAddress() const { return 0; }
   virtual const DWARFSection &getLineSection() const { return Dummy; }
   virtual StringRef getLineStrSection() const { return ""; }
   virtual StringRef getStrSection() const { return ""; }

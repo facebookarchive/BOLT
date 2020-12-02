@@ -40,6 +40,7 @@ namespace llvm {
 
 class AssemblerConstantPools;
 class MCAsmBackend;
+class MCCFIInstruction;
 class MCCodeEmitter;
 class MCContext;
 struct MCDwarfFrameInfo;
@@ -834,6 +835,12 @@ public:
   virtual void emitCodeAlignment(unsigned ByteAlignment,
                                  unsigned MaxBytesToEmit = 0);
 
+  /// If the end of the following fragment ever gets aligned to
+  /// \p ByteAlignment, emit a single nop or \t Value to break this alignment.
+  virtual void emitNeverAlignCodeAtEnd(unsigned ByteAlignment,
+                                       int64_t Value = 0,
+                                       unsigned ValueSize = 1);
+
   /// Emit some number of copies of \p Value until the byte offset \p
   /// Offset is reached.
   ///
@@ -996,6 +1003,7 @@ public:
   virtual void emitCFIRegister(int64_t Register1, int64_t Register2);
   virtual void emitCFIWindowSave();
   virtual void emitCFINegateRAState();
+  virtual void emitCFIInstruction(const MCCFIInstruction &Inst);
 
   virtual void EmitWinCFIStartProc(const MCSymbol *Symbol, SMLoc Loc = SMLoc());
   virtual void EmitWinCFIEndProc(SMLoc Loc = SMLoc());
@@ -1104,6 +1112,10 @@ public:
                                         const MCSymbol *LastLabel,
                                         const MCSymbol *Label,
                                         unsigned PointerSize) {}
+
+  virtual void emitDwarfAdvanceLineAddrAbs(int64_t LineDelta, uint64_t Address,
+                                           uint64_t AddressDelta,
+                                           unsigned PointerSize) {}
 
   /// Do finalization for the streamer at the end of a section.
   virtual void doFinalizationAtSectionEnd(MCSection *Section) {}
