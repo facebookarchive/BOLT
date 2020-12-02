@@ -50,8 +50,8 @@ void Heatmap::registerAddressRange(uint64_t StartAddress, uint64_t EndAddress,
 
   if (StartAddress > EndAddress ||
       EndAddress - StartAddress > 64 * 1024) {
-    DEBUG(dbgs() << "invalid range : 0x" << Twine::utohexstr(StartAddress)
-                 << " -> 0x" << Twine::utohexstr(EndAddress) << '\n');
+    LLVM_DEBUG(dbgs() << "invalid range : 0x" << Twine::utohexstr(StartAddress)
+                      << " -> 0x" << Twine::utohexstr(EndAddress) << '\n');
     ++NumSkippedRanges;
     return;
   }

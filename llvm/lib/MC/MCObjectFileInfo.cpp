@@ -359,6 +359,9 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(const Triple &T, bool Large) {
   ReadOnlySection =
       Ctx->getELFSection(".rodata", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
 
+  ReadOnlyColdSection =
+      Ctx->getELFSection(".rodata.cold", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
+
   TLSDataSection =
       Ctx->getELFSection(".tdata", ELF::SHT_PROGBITS,
                          ELF::SHF_ALLOC | ELF::SHF_TLS | ELF::SHF_WRITE);

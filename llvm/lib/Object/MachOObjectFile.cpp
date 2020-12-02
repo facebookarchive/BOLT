@@ -2066,6 +2066,11 @@ bool MachOObjectFile::isSectionStripped(DataRefImpl Sec) const {
   return getSection(Sec).offset == 0;
 }
 
+bool MachOObjectFile::isSectionReadOnly(DataRefImpl Sec) const {
+  llvm_unreachable("not implemented");
+  return false;
+}
+
 relocation_iterator MachOObjectFile::section_rel_begin(DataRefImpl Sec) const {
   DataRefImpl Ret;
   Ret.d.a = Sec.d.a;
