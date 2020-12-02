@@ -325,7 +325,7 @@ void BinaryFunction::inferFallThroughCounts() {
     if (BBExecCount > TotalReportedJumps)
       Inferred = BBExecCount - TotalReportedJumps;
 
-    DEBUG(
+    LLVM_DEBUG(
       if (BBExecCount < TotalReportedJumps)
         dbgs()
             << "Fall-through inference is slightly inconsistent. "

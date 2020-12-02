@@ -60,13 +60,15 @@ DWARFAbbreviationDeclaration::extract(DataExtractor Data,
 
   // Read all of the abbreviation attributes and forms.
   while (true) {
+    uint32_t AOff = *OffsetPtr;
     auto A = static_cast<Attribute>(Data.getULEB128(OffsetPtr));
+    uint32_t FOff = *OffsetPtr;
     auto F = static_cast<Form>(Data.getULEB128(OffsetPtr));
     if (A && F) {
       bool IsImplicitConst = (F == DW_FORM_implicit_const);
       if (IsImplicitConst) {
         int64_t V = Data.getSLEB128(OffsetPtr);
-        AttributeSpecs.push_back(AttributeSpec(A, F, V));
+        AttributeSpecs.push_back(AttributeSpec(A, F, V, AOff, FOff));
         continue;
       }
       Optional<uint8_t> ByteSize;
@@ -108,7 +110,7 @@ DWARFAbbreviationDeclaration::extract(DataExtractor Data,
         break;
       }
       // Record this attribute and its fixed size if it has one.
-      AttributeSpecs.push_back(AttributeSpec(A, F, ByteSize));
+      AttributeSpecs.push_back(AttributeSpec(A, F, ByteSize, AOff, FOff));
     } else if (A == 0 && F == 0) {
       // We successfully reached the end of this abbreviation declaration
       // since both attribute and form are zero.
@@ -138,6 +140,15 @@ void DWARFAbbreviationDeclaration::dump(raw_ostream &OS) const {
   OS << '\n';
 }
 
+const DWARFAbbreviationDeclaration::AttributeSpec *
+DWARFAbbreviationDeclaration::findAttribute(dwarf::Attribute Attr) const {
+  for (uint32_t i = 0, e = AttributeSpecs.size(); i != e; ++i) {
+    if (AttributeSpecs[i].Attr == Attr)
+      return &AttributeSpecs[i];
+  }
+  return nullptr;
+}
+
 Optional<uint32_t>
 DWARFAbbreviationDeclaration::findAttributeIndex(dwarf::Attribute Attr) const {
   for (uint32_t i = 0, e = AttributeSpecs.size(); i != e; ++i) {
@@ -149,7 +160,7 @@ DWARFAbbreviationDeclaration::findAttributeIndex(dwarf::Attribute Attr) const {
 
 Optional<DWARFFormValue> DWARFAbbreviationDeclaration::getAttributeValue(
     const uint64_t DIEOffset, const dwarf::Attribute Attr,
-    const DWARFUnit &U) const {
+    const DWARFUnit &U, uint64_t *OffsetPtr) const {
   // Check if this abbreviation has this attribute without needing to skip
   // any data so we can return quickly if it doesn't.
   Optional<uint32_t> MatchAttrIndex = findAttributeIndex(Attr);
@@ -170,6 +181,8 @@ Optional<DWARFFormValue> DWARFAbbreviationDeclaration::getAttributeValue(
                                 &Offset, U.getFormParams());
 
   // We have arrived at the attribute to extract, extract if from Offset.
+  if (OffsetPtr)
+    *OffsetPtr = Offset;
   const AttributeSpec &Spec = AttributeSpecs[*MatchAttrIndex];
   if (Spec.isImplicitConst())
     return DWARFFormValue::createFromSValue(Spec.Form,
