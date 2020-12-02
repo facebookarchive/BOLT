@@ -24,7 +24,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "InstPrinter/AArch64InstPrinter.h"
+#include "MCTargetDesc/AArch64InstPrinter.h"
 #include "MCTargetDesc/AArch64AddressingModes.h"
 #include "MCTargetDesc/AArch64MCTargetDesc.h"
 #include "MCTargetDesc/AArch64ELFStreamer.h"
@@ -582,7 +582,7 @@ public:
         if (!Instr.getOperand(OpNum).isReg())
           continue;
         Uses[&Instr].push_back(RegAliasTable[Instr.getOperand(OpNum).getReg()]);
-        DEBUG({
+        LLVM_DEBUG({
           dbgs() << "Adding reg operand " << Instr.getOperand(OpNum).getReg()
                  << " refs ";
           if (RegAliasTable[Instr.getOperand(OpNum).getReg()] != nullptr)
@@ -593,7 +593,7 @@ public:
       }
     };
 
-    DEBUG(dbgs() << "computeLocalUDChain\n");
+    LLVM_DEBUG(dbgs() << "computeLocalUDChain\n");
     bool TerminatorSeen = false;
     for (auto II = Begin; II != End; ++II) {
       auto &Instr = *II;
@@ -605,8 +605,8 @@ public:
         Uses.clear();
       }
 
-      DEBUG(dbgs() << "Now updating for:\n ");
-      DEBUG(Instr.dump());
+      LLVM_DEBUG(dbgs() << "Now updating for:\n ");
+      LLVM_DEBUG(Instr.dump());
       addInstrOperands(Instr);
 
       BitVector Regs = BitVector(RegInfo->getNumRegs(), false);
@@ -616,7 +616,8 @@ public:
       int Idx = Regs.find_first();
       while (Idx != -1) {
         RegAliasTable[Idx] = &Instr;
-        DEBUG(dbgs() << "Setting reg " << Idx << " def to current instr.\n");
+        LLVM_DEBUG(dbgs() << "Setting reg " << Idx
+                          << " def to current instr.\n");
         Idx = Regs.find_next(Idx);
       }
 
@@ -688,7 +689,13 @@ public:
     }
   }
 
-  unsigned getCanonicalBranchOpcode(unsigned Opcode) const override {
+  unsigned getCondCode(const MCInst &Inst) const override {
+    // AArch64 does not use conditional codes, so we just return the opcode
+    // of the conditional branch here.
+    return Inst.getOpcode();
+  }
+
+  unsigned getCanonicalBranchCondCode(unsigned Opcode) const override {
     switch (Opcode) {
     default:
       return Opcode;
@@ -711,7 +718,7 @@ public:
              Inst.getOperand(0).getImm() != AArch64CC::NV &&
              "Can't reverse ALWAYS cond code");
     } else {
-      DEBUG(Inst.dump());
+      LLVM_DEBUG(Inst.dump());
       llvm_unreachable("Unrecognized branch instruction");
     }
     return replaceBranchTarget(Inst, TBB, Ctx);

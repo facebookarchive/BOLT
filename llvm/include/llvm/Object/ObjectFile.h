@@ -112,6 +112,7 @@ public:
   bool isVirtual() const;
   bool isBitcode() const;
   bool isStripped() const;
+  bool isReadOnly() const;
 
   /// Whether this section will be placed in the text segment, according to the
   /// Berkeley size format. This is true if the section is allocatable, and
@@ -272,6 +273,7 @@ protected:
   virtual bool isSectionVirtual(DataRefImpl Sec) const = 0;
   virtual bool isSectionBitcode(DataRefImpl Sec) const;
   virtual bool isSectionStripped(DataRefImpl Sec) const;
+  virtual bool isSectionReadOnly(DataRefImpl Sec) const = 0;
   virtual bool isBerkeleyText(DataRefImpl Sec) const;
   virtual bool isBerkeleyData(DataRefImpl Sec) const;
   virtual bool isDebugSection(StringRef SectionName) const;
@@ -506,6 +508,10 @@ inline bool SectionRef::isBerkeleyData() const {
 
 inline bool SectionRef::isDebugSection(StringRef SectionName) const {
   return OwningObject->isDebugSection(SectionName);
+}
+
+inline bool SectionRef::isReadOnly() const {
+  return OwningObject->isSectionReadOnly(SectionPimpl);
 }
 
 inline relocation_iterator SectionRef::relocation_begin() const {

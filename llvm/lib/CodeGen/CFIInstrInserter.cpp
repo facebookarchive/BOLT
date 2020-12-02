@@ -235,12 +235,20 @@ void CFIInstrInserter::calculateOutgoingCFAInfo(MBBCFAInfo &MBBInfo) {
             "be incorrect!\n");
 #endif
         break;
+      case MCCFIInstruction::OpDefCfaExpression:
+#ifndef NDEBUG
+        report_fatal_error("Support for cfi_def_cfa_expression not "
+                           "implemented! Value of CFA may be incorrect!\n");
+#endif
+        break;
       // Other CFI directives do not affect CFA value.
       case MCCFIInstruction::OpUndefined:
       case MCCFIInstruction::OpSameValue:
       case MCCFIInstruction::OpEscape:
       case MCCFIInstruction::OpWindowSave:
       case MCCFIInstruction::OpNegateRAState:
+      case MCCFIInstruction::OpExpression:
+      case MCCFIInstruction::OpValExpression:
       case MCCFIInstruction::OpGnuArgsSize:
         break;
       }

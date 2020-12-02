@@ -346,6 +346,34 @@ uint64_t MCAssembler::computeFragmentSize(const MCAsmLayout &Layout,
     return Size;
   }
 
+  case MCFragment::FT_NeverAlign: {
+    const MCNeverAlignFragment &NAF = cast<MCNeverAlignFragment>(F);
+    uint64_t Offset = Layout.getFragmentOffset(&NAF);
+    unsigned Size = 0;
+    uint64_t OffsetToAvoid = 0;
+    // Calculate offset to avoid in order to avoid aligning the end of the
+    // next fragment
+    if (const auto *NextFrag = dyn_cast<MCRelaxableFragment>(F.getNextNode())) {
+      OffsetToAvoid = NAF.getAlignment() -
+        (NextFrag->getContents().size() % NAF.getAlignment());
+    } else if (const auto *NextFrag =
+        dyn_cast<MCDataFragment>(F.getNextNode())) {
+      OffsetToAvoid = NAF.getAlignment() -
+        (NextFrag->getContents().size() % NAF.getAlignment());
+    }
+    // Check if the current offset matches the alignment plus offset we want to
+    // avoid
+    if (Offset % NAF.getAlignment() == OffsetToAvoid) {
+      // Avoid this alignment by introducing one extra byte
+      Size = 1;
+      if (Size > 0 && NAF.hasEmitNops()) {
+        while (Size % getBackend().getMinimumNopSize())
+          Size += 1;
+      }
+    }
+    return Size;
+  }
+
   case MCFragment::FT_Org: {
     const MCOrgFragment &OF = cast<MCOrgFragment>(F);
     MCValue Value;
@@ -569,6 +597,41 @@ static void writeFragment(raw_ostream &OS, const MCAssembler &Asm,
     break;
   }
 
+  case MCFragment::FT_NeverAlign: {
+    const MCNeverAlignFragment &NAF = cast<MCNeverAlignFragment>(F);
+    assert(NAF.getValueSize() && "Invalid virtual align in concrete fragment!");
+
+    uint64_t Count = FragmentSize / NAF.getValueSize();
+    if (Count == 0)
+      break;
+    assert(Count * NAF.getValueSize() == FragmentSize);
+
+    if (NAF.hasEmitNops()) {
+      if (!Asm.getBackend().writeNopData(OS, Count))
+        report_fatal_error("unable to write nop sequence of " +
+            Twine(Count) + " bytes");
+      break;
+    }
+
+    // Otherwise, write out in multiples of the value size.
+    for (uint64_t i = 0; i != Count; ++i) {
+      switch (NAF.getValueSize()) {
+        default: llvm_unreachable("Invalid size!");
+        case 1: OS << char(NAF.getValue()); break;
+        case 2:
+          support::endian::write<uint16_t>(OS, NAF.getValue(), Endian);
+          break;
+        case 4:
+          support::endian::write<uint32_t>(OS, NAF.getValue(), Endian);
+          break;
+        case 8:
+          support::endian::write<uint64_t>(OS, NAF.getValue(), Endian);
+          break;
+      }
+    }
+    break;
+  }
+
   case MCFragment::FT_Data:
     ++stats::EmittedDataFragments;
     OS << cast<MCDataFragment>(F).getContents();
@@ -756,6 +819,11 @@ void MCAssembler::writeSectionData(raw_ostream &OS, const MCSection *Sec,
         assert((cast<MCAlignFragment>(F).getValueSize() == 0 ||
                 cast<MCAlignFragment>(F).getValue() == 0) &&
                "Invalid align in virtual section!");
+        break;
+      case MCFragment::FT_NeverAlign:
+        assert((cast<MCNeverAlignFragment>(F).getValueSize() == 0 ||
+                cast<MCNeverAlignFragment>(F).getValue() == 0) &&
+            "Invalid neveralign in virtual section!");
         break;
       case MCFragment::FT_Fill:
         assert((cast<MCFillFragment>(F).getValue() == 0) &&
