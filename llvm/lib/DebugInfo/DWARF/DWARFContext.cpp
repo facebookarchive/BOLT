@@ -1368,6 +1368,19 @@ DWARFContext::getInliningInfoForAddress(object::SectionedAddress Address,
   return InliningInfo;
 }
 
+uint64_t DWARFContext::getAttrFieldOffsetForUnit(DWARFUnit *U,
+                                                 dwarf::Attribute Attr) const {
+  const auto UnitDIE = U->getUnitDIE();
+  if (!UnitDIE)
+    return 0;
+
+  uint64_t Offset = 0;
+  if (!UnitDIE.find(Attr, &Offset))
+    return 0;
+
+  return Offset;
+}
+
 std::shared_ptr<DWARFContext>
 DWARFContext::getDWOContext(StringRef AbsolutePath) {
   if (auto S = DWP.lock()) {
@@ -1590,6 +1603,8 @@ class DWARFObjInMemory final : public DWARFObject {
   // new decompressed sections are inserted at the end.
   std::deque<SmallString<0>> UncompressedSections;
 
+  bool UsesRelocs{true};
+
   StringRef *mapSectionToMember(StringRef Name) {
     if (DWARFSection *Sec = mapNameToDWARFSection(Name))
       return &Sec->Data;
@@ -1652,10 +1667,12 @@ public:
     }
   }
   DWARFObjInMemory(const object::ObjectFile &Obj, const LoadedObjectInfo *L,
-                   function_ref<void(Error)> HandleError, function_ref<void(Error)> HandleWarning )
+                   function_ref<void(Error)> HandleError,
+                   function_ref<void(Error)> HandleWarning,
+                   bool UsesRelocs = true)
       : IsLittleEndian(Obj.isLittleEndian()),
         AddressSize(Obj.getBytesInAddress()), FileName(Obj.getFileName()),
-        Obj(&Obj) {
+        Obj(&Obj), UsesRelocs(UsesRelocs) {
 
     StringMap<unsigned> SectionAmountMap;
     for (const SectionRef &Section : Obj.sections()) {
@@ -1735,7 +1752,7 @@ public:
         S.Data = Data;
       }
 
-      if (RelocatedSection == Obj.section_end())
+      if (RelocatedSection == Obj.section_end() || !UsesRelocs)
         continue;
 
       StringRef RelSecName;
@@ -1849,6 +1866,8 @@ public:
 
   Optional<RelocAddrEntry> find(const DWARFSection &S,
                                 uint64_t Pos) const override {
+    if (!UsesRelocs)
+      return None;
     auto &Sec = static_cast<const DWARFSectionMap &>(S);
     RelocAddrMap::const_iterator AI = Sec.Relocs.find(Pos);
     if (AI == Sec.Relocs.end())
@@ -1965,13 +1984,12 @@ public:
 };
 } // namespace
 
-std::unique_ptr<DWARFContext>
-DWARFContext::create(const object::ObjectFile &Obj, const LoadedObjectInfo *L,
-                     std::string DWPName,
-                     std::function<void(Error)> RecoverableErrorHandler,
-                     std::function<void(Error)> WarningHandler) {
-  auto DObj =
-      std::make_unique<DWARFObjInMemory>(Obj, L, RecoverableErrorHandler, WarningHandler);
+std::unique_ptr<DWARFContext> DWARFContext::create(
+    const object::ObjectFile &Obj, const LoadedObjectInfo *L,
+    std::string DWPName, std::function<void(Error)> RecoverableErrorHandler,
+    std::function<void(Error)> WarningHandler, bool UsesRelocs) {
+  auto DObj = std::make_unique<DWARFObjInMemory>(
+      Obj, L, RecoverableErrorHandler, WarningHandler, UsesRelocs);
   return std::make_unique<DWARFContext>(std::move(DObj), std::move(DWPName),
                                         RecoverableErrorHandler,
                                         WarningHandler);
