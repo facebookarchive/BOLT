@@ -383,8 +383,8 @@ MCPlusBuilder::getAliases(MCPhysReg Reg,
     SuperReg.emplace_back(I);
   }
   std::queue<MCPhysReg> Worklist;
-  // Propagate alias info upwards
-  for (MCPhysReg I = 0, E = RegInfo->getNumRegs(); I != E; ++I) {
+  // Propagate alias info upwards. Skip reg 0 (mapped to NoRegister)
+  for (MCPhysReg I = 1, E = RegInfo->getNumRegs(); I < E; ++I) {
     Worklist.push(I);
   }
   while (!Worklist.empty()) {
@@ -398,7 +398,7 @@ MCPlusBuilder::getAliases(MCPhysReg Reg,
     }
   }
   // Propagate parent reg downwards
-  for (MCPhysReg I = 0, E = RegInfo->getNumRegs(); I != E; ++I) {
+  for (MCPhysReg I = 1, E = RegInfo->getNumRegs(); I < E; ++I) {
     Worklist.push(I);
   }
   while (!Worklist.empty()) {
@@ -410,7 +410,7 @@ MCPlusBuilder::getAliases(MCPhysReg Reg,
     }
   }
 
-  DEBUG({
+  LLVM_DEBUG({
     dbgs() << "Dumping reg alias table:\n";
     for (MCPhysReg I = 0, E = RegInfo->getNumRegs(); I != E; ++I) {
       dbgs() << "Reg " << I << ": ";
@@ -442,7 +442,9 @@ MCPlusBuilder::getRegSize(MCPhysReg Reg) const {
   for (auto I = RegInfo->regclass_begin(), E = RegInfo->regclass_end(); I != E;
        ++I) {
     for (MCPhysReg Reg : *I) {
-      SizeMap[Reg] = I->getSize();
+      //FIXME! size information moved out of MC layer D47199
+//      SizeMap[Reg] = I->getSize();
+      SizeMap[Reg] = 64;
     }
   }
 

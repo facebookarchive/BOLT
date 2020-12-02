@@ -655,6 +655,10 @@ unsigned RuntimeDyldImpl::computeGOTSize(const ObjectFile &Obj) {
 // compute stub buffer size for the given section
 unsigned RuntimeDyldImpl::computeSectionStubBufSize(const ObjectFile &Obj,
                                                     const SectionRef &Section) {
+  if (!MemMgr.allowStubAllocation()) {
+    return 0;
+  }
+
   unsigned StubSize = getMaxStubSize();
   if (StubSize == 0) {
     return 0;
@@ -1085,16 +1089,12 @@ void RuntimeDyldImpl::resolveRelocationList(const RelocationList &Relocs,
 
 void RuntimeDyldImpl::applyExternalSymbolRelocations(
     const StringMap<JITEvaluatedSymbol> ExternalSymbolMap) {
-  while (!ExternalSymbolRelocations.empty()) {
-
-    StringMap<RelocationList>::iterator i = ExternalSymbolRelocations.begin();
-
-    StringRef Name = i->first();
+  for (auto &RelocKV : ExternalSymbolRelocations) {
+    StringRef Name = RelocKV.first();
+    RelocationList &Relocs = RelocKV.second;
     if (Name.size() == 0) {
       // This is an absolute symbol, use an address of zero.
-      LLVM_DEBUG(dbgs() << "Resolving absolute relocations."
-                        << "\n");
-      RelocationList &Relocs = i->second;
+      LLVM_DEBUG(dbgs() << "Resolving absolute relocations.\n");
       resolveRelocationList(Relocs, 0);
     } else {
       uint64_t Addr = 0;
@@ -1105,13 +1105,6 @@ void RuntimeDyldImpl::applyExternalSymbolRelocations(
         assert(RRI != ExternalSymbolMap.end() && "No result for symbol");
         Addr = RRI->second.getAddress();
         Flags = RRI->second.getFlags();
-        // The call to getSymbolAddress may have caused additional modules to
-        // be loaded, which may have added new entries to the
-        // ExternalSymbolRelocations map.  Consquently, we need to update our
-        // iterator.  This is also why retrieval of the relocation list
-        // associated with this symbol is deferred until below this point.
-        // New entries may have been added to the relocation list.
-        i = ExternalSymbolRelocations.find(Name);
       } else {
         // We found the symbol in our global table.  It was probably in a
         // Module that we loaded previously.
@@ -1122,30 +1115,27 @@ void RuntimeDyldImpl::applyExternalSymbolRelocations(
       }
 
       // FIXME: Implement error handling that doesn't kill the host program!
-      if (!Addr)
+      if (!Addr && !Resolver.allowsZeroSymbols())
         report_fatal_error("Program used external function '" + Name +
                            "' which could not be resolved!");
 
       // If Resolver returned UINT64_MAX, the client wants to handle this symbol
       // manually and we shouldn't resolve its relocations.
       if (Addr != UINT64_MAX) {
-
         // Tweak the address based on the symbol flags if necessary.
-        // For example, this is used by RuntimeDyldMachOARM to toggle the low bit
-        // if the target symbol is Thumb.
+        // For example, this is used by RuntimeDyldMachOARM to toggle the low
+        // bit if the target symbol is Thumb.
         Addr = modifyAddressBasedOnFlags(Addr, Flags);
 
         LLVM_DEBUG(dbgs() << "Resolving relocations Name: " << Name << "\t"
                           << format("0x%lx", Addr) << "\n");
         // This list may have been updated when we called getSymbolAddress, so
         // don't change this code to get the list earlier.
-        RelocationList &Relocs = i->second;
         resolveRelocationList(Relocs, Addr);
       }
     }
-
-    ExternalSymbolRelocations.erase(i);
   }
+  ExternalSymbolRelocations.clear();
 }
 
 Error RuntimeDyldImpl::resolveExternalSymbols() {

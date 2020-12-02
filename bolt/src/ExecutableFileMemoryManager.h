@@ -44,7 +44,7 @@ public:
   uint32_t ObjectsLoaded{0};
 
   ExecutableFileMemoryManager(BinaryContext &BC, bool AllowStubs)
-    : BC(BC), AllowStubs(AllowStubs) {}
+      : BC(BC), AllowStubs(AllowStubs) {}
 
   ~ExecutableFileMemoryManager();
 
@@ -61,7 +61,6 @@ public:
     return allocateSection(Size, Alignment, SectionID, SectionName,
                            /*IsCode=*/false, IsReadOnly);
   }
-
   bool allowStubAllocation() const override { return AllowStubs; }
 
   bool finalizeMemory(std::string *ErrMsg = nullptr) override;
