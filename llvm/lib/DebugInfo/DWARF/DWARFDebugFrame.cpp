@@ -1093,7 +1093,6 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data,
                                                   EndAugmentationOffset);
         }
       }
-
       auto Cie = std::make_unique<CIE>(
           IsDWARF64, StartOffset, Length, Version, AugmentationString,
           AddressSize, SegmentDescriptorSize, CodeAlignmentFactor,

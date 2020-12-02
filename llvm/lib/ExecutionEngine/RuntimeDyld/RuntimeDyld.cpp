@@ -1127,10 +1127,9 @@ void RuntimeDyldImpl::applyExternalSymbolRelocations(
       // If Resolver returned UINT64_MAX, the client wants to handle this symbol
       // manually and we shouldn't resolve its relocations.
       if (Addr != UINT64_MAX) {
-
         // Tweak the address based on the symbol flags if necessary.
-        // For example, this is used by RuntimeDyldMachOARM to toggle the low bit
-        // if the target symbol is Thumb.
+        // For example, this is used by RuntimeDyldMachOARM to toggle the low
+        // bit if the target symbol is Thumb.
         Addr = modifyAddressBasedOnFlags(Addr, Flags);
 
         LLVM_DEBUG(dbgs() << "Resolving relocations Name: " << Name << "\t"
