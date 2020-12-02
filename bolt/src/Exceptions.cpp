@@ -115,7 +115,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
       StringRef(reinterpret_cast<const char *>(LSDASectionData.data()),
                 LSDASectionData.size()),
       BC.DwCtx->getDWARFObj().isLittleEndian(), 8);
-  uint32_t Offset = getLSDAAddress() - LSDASectionAddress;
+  uint64_t Offset = getLSDAAddress() - LSDASectionAddress;
   assert(Data.isValidOffset(Offset) && "wrong LSDA address");
 
   uint8_t LPStartEncoding = Data.getU8(&Offset);
@@ -145,10 +145,10 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
   }
 
   // Table to store list of indices in type table. Entries are uleb128 values.
-  const uint32_t TypeIndexTableStart = Offset + TTypeEnd;
+  const uint64_t TypeIndexTableStart = Offset + TTypeEnd;
 
   // Offset past the last decoded index.
-  uint32_t MaxTypeIndexTableOffset = 0;
+  uint64_t MaxTypeIndexTableOffset = 0;
 
   // Max positive index used in type table.
   unsigned MaxTypeIndex = 0;
@@ -204,7 +204,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
         if (Label != Labels.end()) {
           LPSymbol = Label->second;
         } else {
-          LPSymbol = BC.Ctx->createTempSymbol("LP", true);
+          LPSymbol = BC.Ctx->createNamedTempSymbol("LP");
           Labels[LandingPad] = LPSymbol;
         }
       }
@@ -231,7 +231,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
     if (ActionEntry != 0) {
       auto printType = [&](int Index, raw_ostream &OS) {
         assert(Index > 0 && "only positive indices are valid");
-        uint32_t TTEntry = TypeTableStart - Index * TTypeEncodingSize;
+        uint64_t TTEntry = TypeTableStart - Index * TTypeEncodingSize;
         const uint64_t TTEntryAddress = TTEntry + LSDASectionAddress;
         uint64_t TypeAddress =
             *Data.getEncodedPointer(&TTEntry, TTypeEncoding, TTEntryAddress);
@@ -255,7 +255,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
       };
       if (opts::PrintExceptions)
         outs() << "    actions: ";
-      uint32_t ActionPtr = ActionTableStart + ActionEntry - 1;
+      uint64_t ActionPtr = ActionTableStart + ActionEntry - 1;
       int64_t ActionType;
       int64_t ActionNext;
       auto Sep = "";
@@ -284,7 +284,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
           // of indices with base 1.
           // E.g. -1 means offset 0, -2 is offset 1, etc. The indices are
           // encoded using uleb128 thus we cannot directly dereference them.
-          uint32_t TypeIndexTablePtr = TypeIndexTableStart - ActionType - 1;
+          uint64_t TypeIndexTablePtr = TypeIndexTableStart - ActionType - 1;
           while (auto Index = Data.getULEB128(&TypeIndexTablePtr)) {
             MaxTypeIndex = std::max(MaxTypeIndex, static_cast<unsigned>(Index));
             if (opts::PrintExceptions) {
@@ -319,7 +319,7 @@ void BinaryFunction::parseLSDA(ArrayRef<uint8_t> LSDASectionData,
                               MaxTypeIndex * TTypeEncodingSize -
                               ActionTableStart);
     for (unsigned Index = 1; Index <= MaxTypeIndex; ++Index) {
-      uint32_t TTEntry = TypeTableStart - Index * TTypeEncodingSize;
+      uint64_t TTEntry = TypeTableStart - Index * TTypeEncodingSize;
       const auto TTEntryAddress = TTEntry + LSDASectionAddress;
       uint64_t TypeAddress =
           *Data.getEncodedPointer(&TTEntry, TTypeEncoding, TTEntryAddress);
@@ -413,7 +413,7 @@ void BinaryFunction::updateEHRanges() {
       MCInst EHLabel;
       {
         std::unique_lock<std::shared_timed_mutex> Lock(BC.CtxMutex);
-        EHSymbol = BC.Ctx->createTempSymbol("EH", true);
+        EHSymbol = BC.Ctx->createNamedTempSymbol("EH");
         BC.MIB->createEHLabel(EHLabel, EHSymbol, BC.Ctx.get());
       }
 
@@ -579,12 +579,12 @@ bool CFIReaderWriter::fillCFIInfoFor(BinaryFunction &Function) const {
           break;
         case DW_CFA_def_cfa:
           Function.addCFIInstruction(
-              Offset, MCCFIInstruction::createDefCfa(nullptr, Instr.Ops[0],
-                                                     Instr.Ops[1]));
+              Offset, MCCFIInstruction::cfiDefCfa(nullptr, Instr.Ops[0],
+                                                  Instr.Ops[1]));
           break;
         case DW_CFA_def_cfa_sf:
           Function.addCFIInstruction(
-              Offset, MCCFIInstruction::createDefCfa(
+              Offset, MCCFIInstruction::cfiDefCfa(
                           nullptr, Instr.Ops[0],
                           DataAlignment * int64_t(Instr.Ops[1])));
           break;
@@ -596,11 +596,11 @@ bool CFIReaderWriter::fillCFIInfoFor(BinaryFunction &Function) const {
         case DW_CFA_def_cfa_offset:
           Function.addCFIInstruction(
               Offset,
-              MCCFIInstruction::createDefCfaOffset(nullptr, Instr.Ops[0]));
+              MCCFIInstruction::cfiDefCfaOffset(nullptr, Instr.Ops[0]));
           break;
         case DW_CFA_def_cfa_offset_sf:
           Function.addCFIInstruction(
-              Offset, MCCFIInstruction::createDefCfaOffset(
+              Offset, MCCFIInstruction::cfiDefCfaOffset(
                           nullptr, DataAlignment * int64_t(Instr.Ops[0])));
           break;
         case DW_CFA_GNU_args_size:
@@ -708,17 +708,17 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
     // Add the address to the map unless we failed to write it.
     if (!std::binary_search(FailedAddresses.begin(), FailedAddresses.end(),
                             FuncAddress)) {
-      DEBUG(dbgs() << "BOLT-DEBUG: FDE for function at 0x"
-                   << Twine::utohexstr(FuncAddress) << " is at 0x"
-                   << Twine::utohexstr(FDEAddress) << '\n');
+      LLVM_DEBUG(dbgs() << "BOLT-DEBUG: FDE for function at 0x"
+                        << Twine::utohexstr(FuncAddress) << " is at 0x"
+                        << Twine::utohexstr(FDEAddress) << '\n');
       PCToFDE[FuncAddress] = FDEAddress;
     }
   });
 
-  DEBUG(dbgs() << "BOLT-DEBUG: new .eh_frame contains "
-               << std::distance(NewEHFrame.entries().begin(),
-                                NewEHFrame.entries().end())
-               << " entries\n");
+  LLVM_DEBUG(dbgs() << "BOLT-DEBUG: new .eh_frame contains "
+                    << std::distance(NewEHFrame.entries().begin(),
+                                     NewEHFrame.entries().end())
+                    << " entries\n");
 
   // Add entries from the original .eh_frame corresponding to the functions
   // that we did not update.
@@ -728,17 +728,17 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
 
     // Add the address if we failed to write it.
     if (PCToFDE.count(FuncAddress) == 0) {
-      DEBUG(dbgs() << "BOLT-DEBUG: old FDE for function at 0x"
-                   << Twine::utohexstr(FuncAddress) << " is at 0x"
-                   << Twine::utohexstr(FDEAddress) << '\n');
+      LLVM_DEBUG(dbgs() << "BOLT-DEBUG: old FDE for function at 0x"
+                        << Twine::utohexstr(FuncAddress) << " is at 0x"
+                        << Twine::utohexstr(FDEAddress) << '\n');
       PCToFDE[FuncAddress] = FDEAddress;
     }
   });
 
-  DEBUG(dbgs() << "BOLT-DEBUG: old .eh_frame contains "
-               << std::distance(OldEHFrame.entries().begin(),
-                                OldEHFrame.entries().end())
-               << " entries\n");
+  LLVM_DEBUG(dbgs() << "BOLT-DEBUG: old .eh_frame contains "
+                    << std::distance(OldEHFrame.entries().begin(),
+                                     OldEHFrame.entries().end())
+                    << " entries\n");
 
   // Generate a new .eh_frame_hdr based on the new map.
 

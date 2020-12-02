@@ -30,8 +30,8 @@
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "InstPrinter/X86ATTInstPrinter.h"
-#include "InstPrinter/X86IntelInstPrinter.h"
+#include "MCTargetDesc/X86ATTInstPrinter.h"
+#include "MCTargetDesc/X86IntelInstPrinter.h"
 #include "MCTargetDesc/X86MCTargetDesc.h"
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "MCTargetDesc/X86MCAsmInfo.h"
@@ -49,38 +49,8 @@ unsigned getShortBranchOpcode(unsigned Opcode) {
     return Opcode;
   case X86::JMP_2: return X86::JMP_1;
   case X86::JMP_4: return X86::JMP_1;
-  case X86::JE_2:  return X86::JE_1;
-  case X86::JE_4:  return X86::JE_1;
-  case X86::JNE_2: return X86::JNE_1;
-  case X86::JNE_4: return X86::JNE_1;
-  case X86::JL_2:  return X86::JL_1;
-  case X86::JL_4:  return X86::JL_1;
-  case X86::JLE_2: return X86::JLE_1;
-  case X86::JLE_4: return X86::JLE_1;
-  case X86::JG_2:  return X86::JG_1;
-  case X86::JG_4:  return X86::JG_1;
-  case X86::JGE_2: return X86::JGE_1;
-  case X86::JGE_4: return X86::JGE_1;
-  case X86::JB_2:  return X86::JB_1;
-  case X86::JB_4:  return X86::JB_1;
-  case X86::JBE_2: return X86::JBE_1;
-  case X86::JBE_4: return X86::JBE_1;
-  case X86::JA_2:  return X86::JA_1;
-  case X86::JA_4:  return X86::JA_1;
-  case X86::JAE_2: return X86::JAE_1;
-  case X86::JAE_4: return X86::JAE_1;
-  case X86::JS_2:  return X86::JS_1;
-  case X86::JS_4:  return X86::JS_1;
-  case X86::JNS_2: return X86::JNS_1;
-  case X86::JNS_4: return X86::JNS_1;
-  case X86::JP_2:  return X86::JP_1;
-  case X86::JP_4:  return X86::JP_1;
-  case X86::JNP_2: return X86::JNP_1;
-  case X86::JNP_4: return X86::JNP_1;
-  case X86::JO_2:  return X86::JO_1;
-  case X86::JO_4:  return X86::JO_1;
-  case X86::JNO_2: return X86::JNO_1;
-  case X86::JNO_4: return X86::JNO_1;
+  case X86::JCC_2: return X86::JCC_1;
+  case X86::JCC_4: return X86::JCC_1;
   }
 }
 
@@ -152,67 +122,25 @@ unsigned getShortArithOpcode(unsigned Opcode) {
   }
 }
 
-unsigned getInvertedBranchOpcode(unsigned Opcode) {
-  switch (Opcode) {
-  default:
-    return Opcode;
-  case X86::JE_1:  return X86::JNE_1;
-  case X86::JE_2:  return X86::JNE_2;
-  case X86::JE_4:  return X86::JNE_4;
-  case X86::JNE_1: return X86::JE_1;
-  case X86::JNE_2: return X86::JE_2;
-  case X86::JNE_4: return X86::JE_4;
-  case X86::JL_1:  return X86::JGE_1;
-  case X86::JL_2:  return X86::JGE_2;
-  case X86::JL_4:  return X86::JGE_4;
-  case X86::JLE_1: return X86::JG_1;
-  case X86::JLE_2: return X86::JG_2;
-  case X86::JLE_4: return X86::JG_4;
-  case X86::JG_1:  return X86::JLE_1;
-  case X86::JG_2:  return X86::JLE_2;
-  case X86::JG_4:  return X86::JLE_4;
-  case X86::JGE_1: return X86::JL_1;
-  case X86::JGE_2: return X86::JL_2;
-  case X86::JGE_4: return X86::JL_4;
-  case X86::JB_1:  return X86::JAE_1;
-  case X86::JB_2:  return X86::JAE_2;
-  case X86::JB_4:  return X86::JAE_4;
-  case X86::JBE_1: return X86::JA_1;
-  case X86::JBE_2: return X86::JA_2;
-  case X86::JBE_4: return X86::JA_4;
-  case X86::JA_1:  return X86::JBE_1;
-  case X86::JA_2:  return X86::JBE_2;
-  case X86::JA_4:  return X86::JBE_4;
-  case X86::JAE_1: return X86::JB_1;
-  case X86::JAE_2: return X86::JB_2;
-  case X86::JAE_4: return X86::JB_4;
-  case X86::JS_1:  return X86::JNS_1;
-  case X86::JS_2:  return X86::JNS_2;
-  case X86::JS_4:  return X86::JNS_4;
-  case X86::JNS_1: return X86::JS_1;
-  case X86::JNS_2: return X86::JS_2;
-  case X86::JNS_4: return X86::JS_4;
-  case X86::JP_1:  return X86::JNP_1;
-  case X86::JP_2:  return X86::JNP_2;
-  case X86::JP_4:  return X86::JNP_4;
-  case X86::JNP_1: return X86::JP_1;
-  case X86::JNP_2: return X86::JP_2;
-  case X86::JNP_4: return X86::JP_4;
-  case X86::JO_1:  return X86::JNO_1;
-  case X86::JO_2:  return X86::JNO_2;
-  case X86::JO_4:  return X86::JNO_4;
-  case X86::JNO_1: return X86::JO_1;
-  case X86::JNO_2: return X86::JO_2;
-  case X86::JNO_4: return X86::JO_4;
-  case X86::LOOP:
-  case X86::LOOPE:
-  case X86::LOOPNE:
-  case X86::JECXZ:
-  case X86::JRCXZ:
-    // Loop/JCXZ instructions don't have a direct inverse correspondent, so
-    // inverting them would require more complex code transformations.
-    llvm_unreachable("Support for properly inverting LOOP/JCXZ "
-                     "instructions is currently unimplemented.");
+unsigned getInvertedCondCode(unsigned CC) {
+  switch (CC) {
+  default: return X86::COND_INVALID;
+  case X86::COND_E:  return X86::COND_NE;
+  case X86::COND_NE: return X86::COND_E;
+  case X86::COND_L:  return X86::COND_GE;
+  case X86::COND_LE: return X86::COND_G;
+  case X86::COND_G:  return X86::COND_LE;
+  case X86::COND_GE: return X86::COND_L;
+  case X86::COND_B:  return X86::COND_AE;
+  case X86::COND_BE: return X86::COND_A;
+  case X86::COND_A:  return X86::COND_BE;
+  case X86::COND_AE: return X86::COND_B;
+  case X86::COND_S:  return X86::COND_NS;
+  case X86::COND_NS: return X86::COND_S;
+  case X86::COND_P:  return X86::COND_NP;
+  case X86::COND_NP: return X86::COND_P;
+  case X86::COND_O:  return X86::COND_NO;
+  case X86::COND_NO: return X86::COND_O;
   }
 }
 
@@ -485,6 +413,18 @@ public:
     return false;
   }
 
+  unsigned getCondCode(const MCInst &Inst) const override {
+    switch (Inst.getOpcode()) {
+    default:
+      return X86::COND_INVALID;
+    case X86::JCC_1:
+    case X86::JCC_2:
+    case X86::JCC_4:
+      return Inst.getOperand(Info->get(Inst.getOpcode()).NumOperands - 1)
+          .getImm();
+    }
+  }
+
   bool isBreakpoint(const MCInst &Inst) const override {
     return Inst.getOpcode() == X86::INT3;
   }
@@ -509,8 +449,21 @@ public:
 
   // FIXME: For compatibility with old LLVM only!
   bool isTerminator(const MCInst &Inst) const override {
-    return Info->get(Inst.getOpcode()).isTerminator() ||
-           Inst.getOpcode() == X86::UD2B || Inst.getOpcode() == X86::TRAP;
+    if (Info->get(Inst.getOpcode()).isTerminator())
+      return true;
+    switch (Inst.getOpcode()) {
+    default:
+      return false;
+    case X86::TRAP:
+    // Opcodes previously known as X86::UD2B
+    case X86::UD1Wm:
+    case X86::UD1Lm:
+    case X86::UD1Qm:
+    case X86::UD1Wr:
+    case X86::UD1Lr:
+    case X86::UD1Qr:
+      return true;
+    }
   }
 
   bool isIndirectCall(const MCInst &Inst) const override {
@@ -996,24 +949,23 @@ public:
     if (FirstInstGroup == 0)
       return false;
 
-    const auto CondCode =
-        getShortBranchOpcode(getCanonicalBranchOpcode(SecondInst.getOpcode()));
+    const auto CondCode = getCanonicalBranchCondCode(getCondCode(SecondInst));
     switch (CondCode) {
     default:
       llvm_unreachable("unexpected conditional code");
       return false;
-    case X86::JE_1:
-    case X86::JL_1:
-    case X86::JG_1:
+    case X86::COND_E:
+    case X86::COND_L:
+    case X86::COND_G:
       return true;
-    case X86::JO_1:
-    case X86::JP_1:
-    case X86::JS_1:
+    case X86::COND_O:
+    case X86::COND_P:
+    case X86::COND_S:
       if (FirstInstGroup == 1)
         return true;
       return false;
-    case X86::JA_1:
-    case X86::JB_1:
+    case X86::COND_A:
+    case X86::COND_B:
       if (FirstInstGroup != 3)
         return true;
       return false;
@@ -1339,7 +1291,7 @@ public:
           if (isUpper8BitReg(Operand.getReg()))
             return true;
         }
-        // Fall-through
+      LLVM_FALLTHROUGH;
       default:
         return false;
     }
@@ -1414,7 +1366,7 @@ public:
           continue;
         if (static_cast<int>(I) >= MemOpNo && I < X86::AddrNumOperands)
           continue;
-        Sz = RegInfo->getRegClass(MCII.OpInfo[I].RegClass).getPhysRegSize();
+        Sz = RegInfo->getRegClass(MCII.OpInfo[I].RegClass).getSizeInBits() / 8;
         break;
       }
       I = {Sz, IsLoad, IsStore, false, false};
@@ -1438,8 +1390,8 @@ public:
     const MCExpr *DispExpr;
     if (!evaluateX86MemoryOperand(Inst, &BaseRegNum, &ScaleValue, &IndexRegNum,
                                   &DispValue, &SegRegNum, &DispExpr)) {
-      DEBUG(dbgs() << "Evaluate failed on ");
-      DEBUG(Inst.dump());
+      LLVM_DEBUG(dbgs() << "Evaluate failed on ");
+      LLVM_DEBUG(Inst.dump());
       return false;
     }
 
@@ -1798,7 +1750,7 @@ public:
   /// load from memory. It can be extended to work with memory store opcodes as
   /// well as more memory load opcodes.
   bool replaceMemOperandWithImm(MCInst &Inst, StringRef ConstantData,
-                                uint32_t Offset) const override {
+                                uint64_t Offset) const override {
     enum CheckSignExt : uint8_t {
       NOCHECK = 0,
       CHECK8,
@@ -2152,13 +2104,26 @@ public:
       Inst.insert(Inst.begin(), MCOperand::createReg(Reg));
       return;
     }
-    DEBUG(Inst.dump());
+    LLVM_DEBUG(Inst.dump());
     llvm_unreachable("not implemented");
   }
 
   bool shortenInstruction(MCInst &Inst) const override {
     unsigned OldOpcode = Inst.getOpcode();
     unsigned NewOpcode = OldOpcode;
+
+    // Check and remove EIZ/RIZ. These cases represent ambiguous cases where SIB
+    // byte is present, but no index is used and modrm alone shoud have been
+    // enough. Converting to NoRegister effectively removes the SIB byte.
+    auto MemOpNo = getMemoryOperandNo(Inst);
+    if (MemOpNo >= 0) {
+      auto &IndexOp =
+          Inst.getOperand(static_cast<unsigned>(MemOpNo) + X86::AddrIndexReg);
+      if (IndexOp.getReg() == X86::EIZ ||
+          IndexOp.getReg() == X86::RIZ) {
+        IndexOp = MCOperand::createReg(X86::NoRegister);
+      }
+    }
 
     if (isBranch(Inst)) {
       NewOpcode = getShortBranchOpcode(OldOpcode);
@@ -2214,6 +2179,12 @@ public:
     return &SymExpr->getSymbol();
   }
 
+  // This is the same as the base class, but since we are overriding one of
+  // getTargetSymbol's signatures above, we need to override all of them.
+  const MCSymbol *getTargetSymbol(const MCExpr *Expr) const override {
+    return &cast<const MCSymbolRefExpr>(Expr)->getSymbol();
+  }
+
   bool analyzeBranch(InstructionIterator Begin,
                      InstructionIterator End,
                      const MCSymbol *&TBB,
@@ -2254,7 +2225,7 @@ public:
 
       // Handle conditional branches and ignore indirect branches
       if (!isUnsupportedBranch(I->getOpcode()) &&
-          getInvertedBranchOpcode(I->getOpcode()) == I->getOpcode()) {
+          getCondCode(*I) == X86::COND_INVALID) {
         // Indirect branch
         return false;
       }
@@ -2315,7 +2286,7 @@ public:
     //    = R_X86_64_PC32(Ln) + En - JT
     //    = R_X86_64_PC32(Ln + offsetof(En))
     //
-    DEBUG(dbgs() << "Checking for PIC jump table\n");
+    LLVM_DEBUG(dbgs() << "Checking for PIC jump table\n");
     MCInst *MemLocInstr = nullptr;
     const MCInst *MovInstr = nullptr;
     while (++II != IE) {
@@ -2328,7 +2299,7 @@ public:
       } else if (!MovInstr) {
         // Expect to see MOV instruction.
         if (!isMOVSX64rm32(Instr)) {
-          DEBUG(dbgs() << "MOV instruction expected.\n");
+          LLVM_DEBUG(dbgs() << "MOV instruction expected.\n");
           break;
         }
 
@@ -2339,7 +2310,7 @@ public:
         if (MovDestReg != R2)
           std::swap(R1, R2);
         if (MovDestReg != R2) {
-          DEBUG(dbgs() << "MOV instruction expected to set %r2\n");
+          LLVM_DEBUG(dbgs() << "MOV instruction expected to set %r2\n");
           break;
         }
 
@@ -2364,11 +2335,11 @@ public:
         if (!InstrDesc.hasDefOfPhysReg(Instr, R1, *RegInfo))
           continue;
         if (!isLEA64r(Instr)) {
-          DEBUG(dbgs() << "LEA instruction expected\n");
+          LLVM_DEBUG(dbgs() << "LEA instruction expected\n");
           break;
         }
         if (Instr.getOperand(0).getReg() != R1) {
-          DEBUG(dbgs() << "LEA instruction expected to set %r1\n");
+          LLVM_DEBUG(dbgs() << "LEA instruction expected to set %r1\n");
           break;
         }
 
@@ -2396,7 +2367,7 @@ public:
     if (!MemLocInstr)
       return std::make_pair(IndirectBranchType::UNKNOWN, nullptr);
 
-    DEBUG(dbgs() << "checking potential PIC jump table\n");
+    LLVM_DEBUG(dbgs() << "checking potential PIC jump table\n");
     return std::make_pair(IndirectBranchType::POSSIBLE_PIC_JUMP_TABLE,
                           MemLocInstr);
   }
@@ -2868,11 +2839,10 @@ public:
     Code.emplace_back(MCInstBuilder(X86::CMP64ri8)
                           .addReg(RegNo)
                           .addImm(Imm));
-    Code.emplace_back(MCInstBuilder(X86::JE_1)
+    Code.emplace_back(MCInstBuilder(X86::JCC_1)
                           .addExpr(MCSymbolRefExpr::create(
-                            Target,
-                            MCSymbolRefExpr::VK_None,
-                            *Ctx)));
+                              Target, MCSymbolRefExpr::VK_None, *Ctx))
+                          .addImm(X86::COND_E));
     return Code;
   }
 
@@ -2919,13 +2889,13 @@ public:
              "unexpected binary expression");
       const MCExpr *LHS = BinaryExpr->getLHS();
       assert(LHS->getKind() == MCExpr::SymbolRef && "unexpected LHS");
-      Symbol = const_cast<MCSymbol *>(&LHS->getSymbol());
+      Symbol = const_cast<MCSymbol *>(this->getTargetSymbol(LHS));
       const MCExpr *RHS = BinaryExpr->getRHS();
       assert(RHS->getKind() == MCExpr::Constant && "unexpected RHS");
       Addend = cast<MCConstantExpr>(RHS)->getValue();
     } else {
       assert(ValueExpr->getKind() == MCExpr::SymbolRef && "unexpected value");
-      Symbol = const_cast<MCSymbol *>(&ValueExpr->getSymbol());
+      Symbol = const_cast<MCSymbol *>(this->getTargetSymbol(ValueExpr));
     }
 
     return Relocation({RelOffset, Symbol, RelType, Addend, 0});
@@ -3005,73 +2975,41 @@ public:
 
   bool reverseBranchCondition(MCInst &Inst, const MCSymbol *TBB,
                               MCContext *Ctx) const override {
-    Inst.setOpcode(getInvertedBranchOpcode(Inst.getOpcode()));
-    assert(Inst.getOpcode() != 0 && "invalid branch instruction");
+    unsigned InvCC = getInvertedCondCode(getCondCode(Inst));
+    assert(InvCC != X86::COND_INVALID && "invalid branch instruction");
+    Inst.getOperand(Info->get(Inst.getOpcode()).NumOperands - 1).setImm(InvCC);
     Inst.getOperand(0) = MCOperand::createExpr(
         MCSymbolRefExpr::create(TBB, MCSymbolRefExpr::VK_None, *Ctx));
     return true;
   }
 
-  unsigned getCanonicalBranchOpcode(unsigned Opcode) const override {
-    switch (Opcode) {
-    default:
-      return Opcode;
+  unsigned getCanonicalBranchCondCode(unsigned CC) const override {
+    switch (CC) {
+    default:           return X86::COND_INVALID;
 
-    case X86::JE_1:  return X86::JE_1;
-    case X86::JE_2:  return X86::JE_2;
-    case X86::JE_4:  return X86::JE_4;
-    case X86::JNE_1: return X86::JE_1;
-    case X86::JNE_2: return X86::JE_2;
-    case X86::JNE_4: return X86::JE_4;
+    case X86::COND_E:  return X86::COND_E;
+    case X86::COND_NE: return X86::COND_E;
 
-    case X86::JL_1:  return X86::JL_1;
-    case X86::JL_2:  return X86::JL_2;
-    case X86::JL_4:  return X86::JL_4;
-    case X86::JGE_1: return X86::JL_1;
-    case X86::JGE_2: return X86::JL_2;
-    case X86::JGE_4: return X86::JL_4;
+    case X86::COND_L:  return X86::COND_L;
+    case X86::COND_GE: return X86::COND_L;
 
-    case X86::JLE_1: return X86::JG_1;
-    case X86::JLE_2: return X86::JG_2;
-    case X86::JLE_4: return X86::JG_4;
-    case X86::JG_1:  return X86::JG_1;
-    case X86::JG_2:  return X86::JG_2;
-    case X86::JG_4:  return X86::JG_4;
+    case X86::COND_LE: return X86::COND_G;
+    case X86::COND_G:  return X86::COND_G;
 
-    case X86::JB_1:  return X86::JB_1;
-    case X86::JB_2:  return X86::JB_2;
-    case X86::JB_4:  return X86::JB_4;
-    case X86::JAE_1: return X86::JB_1;
-    case X86::JAE_2: return X86::JB_2;
-    case X86::JAE_4: return X86::JB_4;
+    case X86::COND_B:  return X86::COND_B;
+    case X86::COND_AE: return X86::COND_B;
 
-    case X86::JBE_1: return X86::JA_1;
-    case X86::JBE_2: return X86::JA_2;
-    case X86::JBE_4: return X86::JA_4;
-    case X86::JA_1:  return X86::JA_1;
-    case X86::JA_2:  return X86::JA_2;
-    case X86::JA_4:  return X86::JA_4;
+    case X86::COND_BE: return X86::COND_A;
+    case X86::COND_A:  return X86::COND_A;
 
-    case X86::JS_1:  return X86::JS_1;
-    case X86::JS_2:  return X86::JS_2;
-    case X86::JS_4:  return X86::JS_4;
-    case X86::JNS_1: return X86::JS_1;
-    case X86::JNS_2: return X86::JS_2;
-    case X86::JNS_4: return X86::JS_4;
+    case X86::COND_S:  return X86::COND_S;
+    case X86::COND_NS: return X86::COND_S;
 
-    case X86::JP_1:  return X86::JP_1;
-    case X86::JP_2:  return X86::JP_2;
-    case X86::JP_4:  return X86::JP_4;
-    case X86::JNP_1: return X86::JP_1;
-    case X86::JNP_2: return X86::JP_2;
-    case X86::JNP_4: return X86::JP_4;
+    case X86::COND_P:  return X86::COND_P;
+    case X86::COND_NP: return X86::COND_P;
 
-    case X86::JO_1:  return X86::JO_1;
-    case X86::JO_2:  return X86::JO_2;
-    case X86::JO_4:  return X86::JO_4;
-    case X86::JNO_1: return X86::JO_1;
-    case X86::JNO_2: return X86::JO_2;
-    case X86::JNO_4: return X86::JO_4;
+    case X86::COND_O:  return X86::COND_O;
+    case X86::COND_NO: return X86::COND_O;
     }
   }
 
@@ -3504,7 +3442,8 @@ public:
       }
 
       // jump to next target compare.
-      NextTarget = Ctx->createTempSymbol(); // generate label for the next block
+      NextTarget =
+          Ctx->createNamedTempSymbol(); // generate label for the next block
       NewCall->push_back(CallInst);
 
       if (IsJumpTable) {
@@ -3512,7 +3451,7 @@ public:
 
         // Jump to next compare if target addresses don't match.
         Je.clear();
-        Je.setOpcode(X86::JE_1);
+        Je.setOpcode(X86::JCC_1);
         if (Targets[i].first) {
           Je.addOperand(MCOperand::createExpr(
             MCSymbolRefExpr::create(Targets[i].first,
@@ -3521,19 +3460,21 @@ public:
         } else {
           Je.addOperand(MCOperand::createImm(Targets[i].second));
         }
+        Je.addOperand(MCOperand::createImm(X86::COND_E));
         assert(!isInvoke(CallInst));
       } else {
         MCInst &Jne = NewCall->back();
 
         // Jump to next compare if target addresses don't match.
         Jne.clear();
-        Jne.setOpcode(X86::JNE_1);
+        Jne.setOpcode(X86::JCC_1);
         Jne.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(
             NextTarget, MCSymbolRefExpr::VK_None, *Ctx)));
+        Jne.addOperand(MCOperand::createImm(X86::COND_NE));
 
         // Call specific target directly.
-        Results.push_back(
-            std::make_pair(Ctx->createTempSymbol(), std::vector<MCInst>()));
+        Results.push_back(std::make_pair(Ctx->createNamedTempSymbol(),
+                                         std::vector<MCInst>()));
         NewCall = &Results.back().second;
         NewCall->push_back(CallInst);
         MCInst &CallOrJmp = NewCall->back();
@@ -3570,7 +3511,7 @@ public:
           // the merge block.
           if (i == 0) {
             // Fallthrough to merge block.
-            MergeBlock = Ctx->createTempSymbol();
+            MergeBlock = Ctx->createNamedTempSymbol();
           } else {
             // Insert jump to the merge block if we are not doing a fallthrough.
             jumpToMergeBlock(*NewCall);
@@ -3635,16 +3576,18 @@ public:
       shortenInstruction(CompareInst);
 
       // jump to next target compare.
-      NextTarget = Ctx->createTempSymbol(); // generate label for the next block
+      NextTarget =
+          Ctx->createNamedTempSymbol(); // generate label for the next block
       CurBB->push_back(MCInst());
 
       MCInst &JEInst = CurBB->back();
       JEInst.setLoc(IJmpInst.getLoc());
 
       // Jump to target if indices match
-      JEInst.setOpcode(X86::JE_1);
+      JEInst.setOpcode(X86::JCC_1);
       JEInst.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(
           Targets[i].first, MCSymbolRefExpr::VK_None, *Ctx)));
+      JEInst.addOperand(MCOperand::createImm(X86::COND_E));
     }
 
     // Cold call block.

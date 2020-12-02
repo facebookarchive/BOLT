@@ -972,7 +972,8 @@ static void LLVM_ATTRIBUTE_UNUSED dumpDataAux(DataExtractor Data,
   errs() << "\n";
 }
 
-Error DWARFDebugFrame::parse(DWARFDataExtractor Data) {
+Error DWARFDebugFrame::parse(DWARFDataExtractor Data,
+                             RefHandlerType RefHandler) {
   uint64_t Offset = 0;
   DenseMap<uint64_t, CIE *> CIEs;
 
@@ -1054,6 +1055,8 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data) {
             Personality = Data.getEncodedPointer(
                 &Offset, *PersonalityEncoding,
                 EHFrameAddress ? EHFrameAddress + Offset : 0);
+            if (RefHandler)
+              RefHandler(*Personality, Offset, *PersonalityEncoding);
             break;
           }
           case 'R':
@@ -1090,7 +1093,6 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data) {
                                                   EndAugmentationOffset);
         }
       }
-
       auto Cie = std::make_unique<CIE>(
           IsDWARF64, StartOffset, Length, Version, AugmentationString,
           AddressSize, SegmentDescriptorSize, CodeAlignmentFactor,
@@ -1119,6 +1121,8 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data) {
                                        EHFrameAddress + Offset)) {
           InitialLocation = *Val;
         }
+        if (RefHandler)
+          RefHandler(InitialLocation, Offset, Cie->getFDEPointerEncoding());
         if (auto Val = Data.getEncodedPointer(
                 &Offset, Cie->getFDEPointerEncoding(), 0)) {
           AddressRange = *Val;
@@ -1136,6 +1140,8 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data) {
             LSDAAddress = Data.getEncodedPointer(
                 &Offset, Cie->getLSDAPointerEncoding(),
                 EHFrameAddress ? Offset + EHFrameAddress : 0);
+            if (RefHandler)
+              RefHandler(*LSDAAddress, Offset, Cie->getLSDAPointerEncoding());
           }
 
           if (Offset != EndAugmentationOffset)
@@ -1174,6 +1180,13 @@ FrameEntry *DWARFDebugFrame::getEntryAtOffset(uint64_t Offset) const {
   if (It != Entries.end() && (*It)->getOffset() == Offset)
     return It->get();
   return nullptr;
+}
+
+void DWARFDebugFrame::for_each_FDE(FDEFunction F) const {
+  for (const auto &Entry : Entries) {
+    if (const auto *FDE = dyn_cast<dwarf::FDE>(Entry.get()))
+      F(FDE);
+  }
 }
 
 void DWARFDebugFrame::dump(raw_ostream &OS, DIDumpOptions DumpOpts,

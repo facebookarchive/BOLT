@@ -287,6 +287,7 @@ protected:
   bool isSectionData(DataRefImpl Sec) const override;
   bool isSectionBSS(DataRefImpl Sec) const override;
   bool isSectionVirtual(DataRefImpl Sec) const override;
+  bool isSectionReadOnly(DataRefImpl Sec) const override;
   bool isBerkeleyText(DataRefImpl Sec) const override;
   bool isBerkeleyData(DataRefImpl Sec) const override;
   bool isDebugSection(StringRef SectionName) const override;
@@ -934,6 +935,14 @@ bool ELFObjectFile<ELFT>::isDebugSection(StringRef SectionName) const {
 }
 
 template <class ELFT>
+bool ELFObjectFile<ELFT>::isSectionReadOnly(DataRefImpl Sec) const {
+  const Elf_Shdr *EShdr = getSection(Sec);
+  return EShdr->sh_flags & ELF::SHF_ALLOC &&
+         !(EShdr->sh_flags & ELF::SHF_WRITE) &&
+         EShdr->sh_type == ELF::SHT_PROGBITS;
+}
+
+template <class ELFT>
 relocation_iterator
 ELFObjectFile<ELFT>::section_rel_begin(DataRefImpl Sec) const {
   DataRefImpl RelData;
@@ -968,9 +977,6 @@ ELFObjectFile<ELFT>::section_rel_end(DataRefImpl Sec) const {
 template <class ELFT>
 Expected<section_iterator>
 ELFObjectFile<ELFT>::getRelocatedSection(DataRefImpl Sec) const {
-  if (EF.getHeader().e_type != ELF::ET_REL)
-    return section_end();
-
   const Elf_Shdr *EShdr = getSection(Sec);
   uintX_t Type = EShdr->sh_type;
   if (Type != ELF::SHT_REL && Type != ELF::SHT_RELA)
@@ -979,6 +985,9 @@ ELFObjectFile<ELFT>::getRelocatedSection(DataRefImpl Sec) const {
   Expected<const Elf_Shdr *> SecOrErr = EF.getSection(EShdr->sh_info);
   if (!SecOrErr)
     return SecOrErr.takeError();
+  if (EF.getHeader().e_type != ELF::ET_REL &&
+      !((*SecOrErr)->sh_flags & ELF::SHF_ALLOC))
+    return section_end();
   return section_iterator(SectionRef(toDRI(*SecOrErr), this));
 }
 

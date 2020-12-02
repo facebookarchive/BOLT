@@ -198,7 +198,8 @@ SMLoc findDebugLineInformationForInstructionAt(uint64_t Address,
       "Cannot fit instruction debug line information into SMLoc's pointer");
 
   SMLoc NullResult = DebugLineTableRowRef::NULL_ROW.toSMLoc();
-  uint32_t RowIndex = LineTable->lookupAddress(Address);
+  uint32_t RowIndex = LineTable->lookupAddress(
+      {Address, object::SectionedAddress::UndefSection});
   if (RowIndex == LineTable->UnknownRowIndex)
     return NullResult;
 
@@ -806,8 +807,8 @@ BinaryFunction::processIndirectBranch(MCInst &Instruction,
   if (BaseRegNum == BC.MRI->getProgramCounter())
     ArrayStart += getAddress() + Offset + Size;
 
-  DEBUG(dbgs() << "BOLT-DEBUG: addressed memory is 0x"
-               << Twine::utohexstr(ArrayStart) << '\n');
+  LLVM_DEBUG(dbgs() << "BOLT-DEBUG: addressed memory is 0x"
+                    << Twine::utohexstr(ArrayStart) << '\n');
 
   auto Section = BC.getSectionForAddress(ArrayStart);
   if (!Section) {
@@ -918,7 +919,7 @@ MCSymbol *BinaryFunction::getOrCreateLocalLabel(uint64_t Address,
     }
   }
 
-  auto *Label = BC.Ctx->createTempSymbol();
+  auto *Label = BC.Ctx->createNamedTempSymbol();
   Labels[Offset] = Label;
 
   return Label;
@@ -984,7 +985,7 @@ bool BinaryFunction::disassemble() {
 
   // Insert a label at the beginning of the function. This will be our first
   // basic block.
-  Labels[0] = Ctx->createTempSymbol("BB0", false);
+  Labels[0] = Ctx->createNamedTempSymbol("BB0");
 
   auto handlePCRelOperand =
       [&](MCInst &Instruction, uint64_t Address, uint64_t Size) {
@@ -992,7 +993,7 @@ bool BinaryFunction::disassemble() {
     if (!MIB->evaluateMemOperandTarget(Instruction, TargetAddress, Address,
                                        Size)) {
       errs() << "BOLT-ERROR: PC-relative operand can't be evaluated:\n";
-      BC.InstPrinter->printInst(&Instruction, errs(), "", *BC.STI);
+      BC.InstPrinter->printInst(&Instruction, 0, "", *BC.STI, errs());
       errs() << '\n';
       Instruction.dump_pretty(errs(), BC.InstPrinter.get());
       errs() << '\n';
@@ -1052,7 +1053,6 @@ bool BinaryFunction::disassemble() {
                                    Size,
                                    FunctionData.slice(Offset),
                                    AbsoluteInstrAddr,
-                                   nulls(),
                                    nulls())) {
       // Functions with "soft" boundaries, e.g. coming from assembly source,
       // can have 0-byte padding at the end.
@@ -1113,12 +1113,14 @@ bool BinaryFunction::disassemble() {
          ItrE = Relocations.lower_bound(Offset + Size); Itr != ItrE; ++Itr) {
       const auto &Relocation = Itr->second;
 
-      DEBUG(dbgs() << "BOLT-DEBUG: replacing immediate 0x"
-            << Twine::utohexstr(Relocation.Value) << " with relocation"
-            " against " << Relocation.Symbol
-            << "+" << Relocation.Addend << " in function " << *this
-            << " for instruction at offset 0x"
-            << Twine::utohexstr(Offset) << '\n');
+      LLVM_DEBUG(dbgs() << "BOLT-DEBUG: replacing immediate 0x"
+                        << Twine::utohexstr(Relocation.Value)
+                        << " with relocation"
+                           " against "
+                        << Relocation.Symbol << "+" << Relocation.Addend
+                        << " in function " << *this
+                        << " for instruction at offset 0x"
+                        << Twine::utohexstr(Offset) << '\n');
 
       // Process reference to the primary symbol.
       if (!Relocation.isPCRelative())
@@ -1196,10 +1198,10 @@ bool BinaryFunction::disassemble() {
             if (TargetAddress == getAddress() + getSize() &&
                 TargetAddress < getAddress() + getMaxSize()) {
               // Result of __builtin_unreachable().
-              DEBUG(dbgs() << "BOLT-DEBUG: jump past end detected at 0x"
-                           << Twine::utohexstr(AbsoluteInstrAddr)
-                           << " in function " << *this
-                           << " : replacing with nop.\n");
+              LLVM_DEBUG(dbgs() << "BOLT-DEBUG: jump past end detected at 0x"
+                                << Twine::utohexstr(AbsoluteInstrAddr)
+                                << " in function " << *this
+                                << " : replacing with nop.\n");
               BC.MIB->createNoop(Instruction);
               if (IsCondBranch) {
                 // Register branch offset for profile validation.
@@ -1260,11 +1262,12 @@ bool BinaryFunction::disassemble() {
                     (RelSize == 1) ? ELF::R_X86_64_PC8 : ELF::R_X86_64_PC32;
                 if (BC.isAArch64())
                   RelType = ELF::R_AARCH64_CALL26;
-                DEBUG(dbgs() << "BOLT-DEBUG: creating relocation for static"
-                             << " function call to " << TargetSymbol->getName()
-                             << " at offset 0x" << Twine::utohexstr(RelOffset)
-                             << " with size " << RelSize << " for function "
-                             << *this << '\n');
+                LLVM_DEBUG(dbgs()
+                           << "BOLT-DEBUG: creating relocation for static"
+                           << " function call to " << TargetSymbol->getName()
+                           << " at offset 0x" << Twine::utohexstr(RelOffset)
+                           << " with size " << RelSize << " for function "
+                           << *this << '\n');
                 addRelocation(getAddress() + RelOffset, TargetSymbol, RelType,
                               -RelSize, 0);
               }
@@ -1434,7 +1437,6 @@ bool BinaryFunction::scanExternalRefs() {
                                    Size,
                                    FunctionData.slice(Offset),
                                    AbsoluteInstrAddr,
-                                   nulls(),
                                    nulls())) {
       if (opts::Verbosity >= 1 && !isZeroPaddingAt(Offset)) {
         errs() << "BOLT-WARNING: unable to disassemble instruction at offset 0x"
@@ -1703,13 +1705,11 @@ void BinaryFunction::postProcessJumpTables() {
         auto EntryAddress = JT->getAddress() + EntryOffset;
         auto Res = BC.removeRelocationAt(EntryAddress);
         (void)Res;
-        DEBUG(
-          auto Section = BC.getSectionForAddress(EntryAddress);
-          auto Offset = EntryAddress - Section->getAddress();
-          dbgs() << "BOLT-DEBUG: removing relocation from section "
-                 << Section->getName() << " at offset 0x"
-                 << Twine::utohexstr(Offset) << " = "
-                 << Res << '\n');
+        LLVM_DEBUG(auto Section = BC.getSectionForAddress(EntryAddress);
+                   auto Offset = EntryAddress - Section->getAddress();
+                   dbgs() << "BOLT-DEBUG: removing relocation from section "
+                          << Section->getName() << " at offset 0x"
+                          << Twine::utohexstr(Offset) << " = " << Res << '\n');
       }
 
       EntryOffset += JT->EntrySize;
@@ -1822,8 +1822,8 @@ bool BinaryFunction::postProcessIndirectBranches(
             // Invalidating the jump table may also invalidate other jump table
             // boundaries. Until we have/need a support for this, mark the
             // function as non-simple.
-            DEBUG(dbgs() << "BOLT-DEBUG: rejected jump table reference"
-                         << JT->getName() << " in " << *this << '\n');
+            LLVM_DEBUG(dbgs() << "BOLT-DEBUG: rejected jump table reference"
+                              << JT->getName() << " in " << *this << '\n');
             return false;
           }
         }
@@ -1852,8 +1852,8 @@ bool BinaryFunction::postProcessIndirectBranches(
         outs() << "BOLT-INFO: rejected potential indirect tail call in "
                << "function " << *this << " in basic block "
                << BB->getName() << ".\n";
-        DEBUG(BC.printInstructions(dbgs(), BB->begin(), BB->end(),
-                                   BB->getOffset(), this, true));
+        LLVM_DEBUG(BC.printInstructions(dbgs(), BB->begin(), BB->end(),
+                                        BB->getOffset(), this, true));
       }
 
       if (!opts::StrictMode)
@@ -2004,8 +2004,8 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
     bool IsLKMarker = BC.LKMarkers.count(InstrInputAddr);
     if (IsSDTMarker || IsLKMarker) {
       HasSDTMarker = true;
-      DEBUG(dbgs() << "SDTMarker or LKMarker detected in the input at : "
-                   << utohexstr(InstrInputAddr) << "\n");
+      LLVM_DEBUG(dbgs() << "SDTMarker or LKMarker detected in the input at : "
+                        << utohexstr(InstrInputAddr) << "\n");
       if (!MIB->hasAnnotation(Instr, "Offset")) {
         MIB->addAnnotation(Instr, "Offset", static_cast<uint32_t>(Offset),
                            AllocatorId);
@@ -2035,7 +2035,7 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
         MCSymbol *Label;
         {
           auto L = BC.scopeLock();
-          Label = BC.Ctx->createTempSymbol("FT", true);
+          Label = BC.Ctx->createNamedTempSymbol("FT");
         }
         InsertBB = addBasicBlock(
             Offset, Label, opts::PreserveBlocksAlignment && IsLastInstrNop);
@@ -2077,15 +2077,16 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
   }
 
   // Intermediate dump.
-  DEBUG(print(dbgs(), "after creating basic blocks"));
+  LLVM_DEBUG(print(dbgs(), "after creating basic blocks"));
 
   // TODO: handle properly calls to no-return functions,
   // e.g. exit(3), etc. Otherwise we'll see a false fall-through
   // blocks.
 
   for (auto &Branch : TakenBranches) {
-    DEBUG(dbgs() << "registering branch [0x" << Twine::utohexstr(Branch.first)
-                 << "] -> [0x" << Twine::utohexstr(Branch.second) << "]\n");
+    LLVM_DEBUG(dbgs() << "registering branch [0x"
+                      << Twine::utohexstr(Branch.first) << "] -> [0x"
+                      << Twine::utohexstr(Branch.second) << "]\n");
     auto *FromBB = getBasicBlockContainingOffset(Branch.first);
     auto *ToBB = getBasicBlockAtOffset(Branch.second);
     if (!FromBB || !ToBB) {
@@ -2137,8 +2138,8 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
 
   if (!IsPrevFT) {
     // Possibly a call that does not return.
-    DEBUG(dbgs() << "last block was marked as a fall-through in " << *this
-                 << '\n');
+    LLVM_DEBUG(dbgs() << "last block was marked as a fall-through in " << *this
+                      << '\n');
   }
 
   // Assign landing pads and throwers info.
@@ -2236,10 +2237,10 @@ void BinaryFunction::calculateMacroOpFusionStats() {
     if (!Offset || (getAddress() + Offset) % 64)
       continue;
 
-    DEBUG(dbgs() << "\nmissed macro-op fusion at address 0x"
-                 << Twine::utohexstr(getAddress() + Offset) << " in function "
-                 << *this << "; executed " << BB->getKnownExecutionCount()
-                 << " times.\n");
+    LLVM_DEBUG(dbgs() << "\nmissed macro-op fusion at address 0x"
+                      << Twine::utohexstr(getAddress() + Offset)
+                      << " in function " << *this << "; executed "
+                      << BB->getKnownExecutionCount() << " times.\n");
     ++BC.MissedMacroFusionPairs;
     BC.MissedMacroFusionExecCount += BB->getKnownExecutionCount();
   }
@@ -2300,7 +2301,7 @@ void BinaryFunction::removeConditionalTailCalls() {
     // is, so we can map samples recorded in new BBs back to the original BB
     // seem in the input binary (if using BAT)
     auto TailCallBB = createBasicBlock(BB.getInputOffset(),
-                                       BC.Ctx->createTempSymbol("TC", true));
+                                       BC.Ctx->createNamedTempSymbol("TC"));
     TailCallBB->addInstruction(TailCallInstr);
     TailCallBB->setCFIState(CFIStateBeforeCTC);
 
@@ -2467,6 +2468,7 @@ private:
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
     case MCCFIInstruction::OpEscape:
+    case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       break;
     case MCCFIInstruction::OpRememberState:
@@ -2599,6 +2601,7 @@ struct CFISnapshotDiff : public CFISnapshot {
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
     case MCCFIInstruction::OpEscape:
+    case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       return false;
     case MCCFIInstruction::OpRememberState:
@@ -2707,8 +2710,8 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
     case MCCFIInstruction::OpDefCfa:
     case MCCFIInstruction::OpDefCfaExpression:
       if (ToCFITable.CFARule == CFISnapshot::UNKNOWN) {
-        FrameInstructions.emplace_back(MCCFIInstruction::createDefCfa(
-            nullptr, ToCFITable.CFAReg, -ToCFITable.CFAOffset));
+        FrameInstructions.emplace_back(MCCFIInstruction::cfiDefCfa(
+            nullptr, ToCFITable.CFAReg, ToCFITable.CFAOffset));
         if (FromCFITable.isRedundant(FrameInstructions.back())) {
           FrameInstructions.pop_back();
           break;
@@ -2734,6 +2737,7 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
     case MCCFIInstruction::OpEscape:
+    case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       break;
     case MCCFIInstruction::OpGnuArgsSize:
@@ -2787,9 +2791,10 @@ void BinaryFunction::normalizeCFIState() {
 }
 
 bool BinaryFunction::finalizeCFIState() {
-  DEBUG(dbgs() << "Trying to fix CFI states for each BB after reordering.\n");
-  DEBUG(dbgs() << "This is the list of CFI states for each BB of " << *this
-               << ": ");
+  LLVM_DEBUG(
+      dbgs() << "Trying to fix CFI states for each BB after reordering.\n");
+  LLVM_DEBUG(dbgs() << "This is the list of CFI states for each BB of " << *this
+                    << ": ");
 
   int32_t State = 0;
   bool SeenCold = false;
@@ -2823,9 +2828,9 @@ bool BinaryFunction::finalizeCFIState() {
     }
 
     State = CFIStateAtExit;
-    DEBUG(dbgs() << Sep << State; Sep = ", ");
+    LLVM_DEBUG(dbgs() << Sep << State; Sep = ", ");
   }
-  DEBUG(dbgs() << "\n");
+  LLVM_DEBUG(dbgs() << "\n");
 
   for (auto BB : BasicBlocksLayout) {
     for (auto II = BB->begin(); II != BB->end(); ) {
@@ -2934,7 +2939,7 @@ void BinaryFunction::setIgnored() {
 
   IsIgnored = true;
   IsSimple = false;
-  DEBUG(dbgs() << "Ignoring " << getPrintName() << '\n');
+  LLVM_DEBUG(dbgs() << "Ignoring " << getPrintName() << '\n');
 }
 
 void BinaryFunction::duplicateConstantIslands() {
@@ -3080,13 +3085,13 @@ void BinaryFunction::dumpGraph(raw_ostream& OS) const {
       std::string Branch;
       if (Success) {
         if (Succ == BB->getConditionalSuccessor(true)) {
-          Branch = CondBranch
-            ? BC.InstPrinter->getOpcodeName(CondBranch->getOpcode())
-            : "TB";
+          Branch = CondBranch ? std::string(BC.InstPrinter->getOpcodeName(
+                                    CondBranch->getOpcode()))
+                              : "TB";
         } else if (Succ == BB->getConditionalSuccessor(false)) {
-          Branch = UncondBranch
-            ? BC.InstPrinter->getOpcodeName(UncondBranch->getOpcode())
-            : "FB";
+          Branch = UncondBranch ? std::string(BC.InstPrinter->getOpcodeName(
+                                      UncondBranch->getOpcode()))
+                                : "FB";
         } else {
           Branch = "FT";
         }
@@ -3126,7 +3131,7 @@ void BinaryFunction::viewGraph() const {
            << " bolt-cfg-XXXXX.dot temporary file.\n";
     return;
   }
-  dumpGraphToFile(Filename.str());
+  dumpGraphToFile(std::string(Filename));
   if (DisplayGraph(Filename)) {
     errs() << "BOLT-ERROR: Can't display " << Filename << " with graphviz.\n";
   }
@@ -3364,8 +3369,8 @@ void BinaryFunction::postProcessBranches() {
         // one valid successor. Such behaviour is undefined and thus we remove
         // the conditional branch while leaving a valid successor.
         BB->eraseInstruction(std::prev(LastInstrRI.base()));
-        DEBUG(dbgs() << "BOLT-DEBUG: erasing conditional branch in "
-                     << BB->getName() << " in function " << *this << '\n');
+        LLVM_DEBUG(dbgs() << "BOLT-DEBUG: erasing conditional branch in "
+                          << BB->getName() << " in function " << *this << '\n');
       }
     } else if (BB->succ_size() == 0) {
       // Ignore unreachable basic blocks.
@@ -3375,14 +3380,15 @@ void BinaryFunction::postProcessBranches() {
       // If it's the basic block that does not end up with a terminator - we
       // insert a return instruction unless it's a call instruction.
       if (LastInstrRI == BB->rend()) {
-        DEBUG(dbgs() << "BOLT-DEBUG: at least one instruction expected in BB "
-                     << BB->getName() << " in function " << *this << '\n');
+        LLVM_DEBUG(
+            dbgs() << "BOLT-DEBUG: at least one instruction expected in BB "
+                   << BB->getName() << " in function " << *this << '\n');
         continue;
       }
       if (!BC.MIB->isTerminator(*LastInstrRI) &&
           !BC.MIB->isCall(*LastInstrRI)) {
-        DEBUG(dbgs() << "BOLT-DEBUG: adding return to basic block "
-                     << BB->getName() << " in function " << *this << '\n');
+        LLVM_DEBUG(dbgs() << "BOLT-DEBUG: adding return to basic block "
+                          << BB->getName() << " in function " << *this << '\n');
         MCInst ReturnInstr;
         BC.MIB->createReturn(ReturnInstr);
         BB->addInstruction(ReturnInstr);
@@ -3554,8 +3560,8 @@ BinaryFunction::BasicBlockOrderType BinaryFunction::dfs() const {
     MCInst *UncondBranch = nullptr;
     if (BB->analyzeBranch(TBB, FBB, CondBranch, UncondBranch) &&
         CondBranch && BB->succ_size() == 2) {
-      if (BC.MIB->getCanonicalBranchOpcode(CondBranch->getOpcode()) ==
-          CondBranch->getOpcode()) {
+      if (BC.MIB->getCanonicalBranchCondCode(BC.MIB->getCondCode(
+              *CondBranch)) == BC.MIB->getCondCode(*CondBranch)) {
         Stack.push(BB->getConditionalSuccessor(true));
         Stack.push(BB->getConditionalSuccessor(false));
       } else {
@@ -3845,7 +3851,7 @@ BinaryBasicBlock *BinaryFunction::splitEdge(BinaryBasicBlock *From,
   MCSymbol *Tmp;
   {
     auto L = BC.scopeLock();
-    Tmp = BC.Ctx->createTempSymbol("SplitEdge", true);
+    Tmp = BC.Ctx->createNamedTempSymbol("SplitEdge");
   }
   // Link new BBs to the original input offset of the From BB, so we can map
   // samples recorded in new BBs back to the original BB seem in the input
@@ -3963,7 +3969,7 @@ bool BinaryFunction::isSymbolValidInScope(const SymbolRef &Symbol,
   if (cantFail(Symbol.getType()) != SymbolRef::ST_Unknown)
     return false;
 
-  if (Symbol.getFlags() & SymbolRef::SF_Global)
+  if (cantFail(Symbol.getFlags()) & SymbolRef::SF_Global)
     return false;
 
   return true;
@@ -4245,9 +4251,10 @@ DebugAddressRangesVector BinaryFunction::translateInputToOutputRanges(
   uint64_t PrevEndAddress = 0;
   for (const auto &Range : InputRanges) {
     if (!containsAddress(Range.LowPC)) {
-      DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
-                   << *this << " : [0x" << Twine::utohexstr(Range.LowPC)
-                   << ", 0x" << Twine::utohexstr(Range.HighPC) << "]\n");
+      LLVM_DEBUG(
+          dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
+                 << *this << " : [0x" << Twine::utohexstr(Range.LowPC) << ", 0x"
+                 << Twine::utohexstr(Range.HighPC) << "]\n");
       PrevEndAddress = 0;
       continue;
     }
@@ -4263,9 +4270,10 @@ DebugAddressRangesVector BinaryFunction::translateInputToOutputRanges(
     do {
       const auto *BB = BBI->second;
       if (InputOffset < BB->getOffset() || InputOffset >= BB->getEndOffset()) {
-        DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
-                     << *this << " : [0x" << Twine::utohexstr(Range.LowPC)
-                     << ", 0x" << Twine::utohexstr(Range.HighPC) << "]\n");
+        LLVM_DEBUG(
+            dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
+                   << *this << " : [0x" << Twine::utohexstr(Range.LowPC)
+                   << ", 0x" << Twine::utohexstr(Range.HighPC) << "]\n");
         PrevEndAddress = 0;
         break;
       }
@@ -4331,9 +4339,9 @@ MCInst *BinaryFunction::getInstructionAtOffset(uint64_t Offset) {
   }
 }
 
-DWARFDebugLoc::LocationList BinaryFunction::translateInputToOutputLocationList(
-    DWARFDebugLoc::LocationList InputLL) const {
-  DWARFDebugLoc::LocationList OutputLL;
+DebugLocationsVector BinaryFunction::translateInputToOutputLocationList(
+    const DebugLocationsVector &InputLL) const {
+  DebugLocationsVector OutputLL;
 
   if (isFolded()) {
     return OutputLL;
@@ -4345,14 +4353,15 @@ DWARFDebugLoc::LocationList BinaryFunction::translateInputToOutputLocationList(
   }
 
   uint64_t PrevEndAddress = 0;
-  SmallVectorImpl<char> *PrevLoc = nullptr;
-  for (const auto &Entry : InputLL.Entries) {
-    const auto Start = Entry.Begin;
-    const auto End = Entry.End;
+  SmallVectorImpl<uint8_t> *PrevExpr = nullptr;
+  for (const DebugLocationEntry &Entry : InputLL) {
+    const uint64_t Start = Entry.LowPC;
+    const uint64_t End = Entry.HighPC;
     if (!containsAddress(Start)) {
-      DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
-                   << *this << " : [0x" << Twine::utohexstr(Start)
-                   << ", 0x" << Twine::utohexstr(End) << "]\n");
+      LLVM_DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected "
+                            "for "
+                        << *this << " : [0x" << Twine::utohexstr(Start)
+                        << ", 0x" << Twine::utohexstr(End) << "]\n");
       continue;
     }
     auto InputOffset = Start - getAddress();
@@ -4365,9 +4374,10 @@ DWARFDebugLoc::LocationList BinaryFunction::translateInputToOutputLocationList(
     do {
       const auto *BB = BBI->second;
       if (InputOffset < BB->getOffset() || InputOffset >= BB->getEndOffset()) {
-        DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected for "
-                     << *this << " : [0x" << Twine::utohexstr(Start)
-                     << ", 0x" << Twine::utohexstr(End) << "]\n");
+        LLVM_DEBUG(dbgs() << "BOLT-DEBUG: invalid debug address range detected "
+                             "for "
+                          << *this << " : [0x" << Twine::utohexstr(Start)
+                          << ", 0x" << Twine::utohexstr(End) << "]\n");
         PrevEndAddress = 0;
         break;
       }
@@ -4379,17 +4389,16 @@ DWARFDebugLoc::LocationList BinaryFunction::translateInputToOutputLocationList(
         if (InputEndOffset < BB->getEndOffset())
           EndAddress = StartAddress + InputEndOffset - InputOffset;
 
-        if (StartAddress == PrevEndAddress && Entry.Loc == *PrevLoc) {
-          OutputLL.Entries.back().End = std::max(OutputLL.Entries.back().End,
-                                                 EndAddress);
+        if (StartAddress == PrevEndAddress && Entry.Expr == *PrevExpr) {
+          OutputLL.back().HighPC = std::max(OutputLL.back().HighPC, EndAddress);
         } else {
-          OutputLL.Entries.emplace_back(
-              DWARFDebugLoc::Entry{StartAddress,
-                                   std::max(StartAddress, EndAddress),
-                                   Entry.Loc});
+          OutputLL.emplace_back(
+              DebugLocationEntry{StartAddress,
+                                 std::max(StartAddress, EndAddress),
+                                 Entry.Expr});
         }
-        PrevEndAddress = OutputLL.Entries.back().End;
-        PrevLoc = &OutputLL.Entries.back().Loc;
+        PrevEndAddress = OutputLL.back().HighPC;
+        PrevExpr = &OutputLL.back().Expr;
       }
 
       ++BBI;
@@ -4398,26 +4407,23 @@ DWARFDebugLoc::LocationList BinaryFunction::translateInputToOutputLocationList(
   }
 
   // Sort and merge adjacent entries with identical location.
-  std::stable_sort(OutputLL.Entries.begin(), OutputLL.Entries.end(),
-      [] (const DWARFDebugLoc::Entry &A, const DWARFDebugLoc::Entry &B) {
-        return A.Begin < B.Begin;
+  std::stable_sort(OutputLL.begin(), OutputLL.end(),
+      [] (const DebugLocationEntry &A, const DebugLocationEntry &B) {
+        return A.LowPC < B.LowPC;
       });
-  DWARFDebugLoc::LocationList MergedLL;
+  DebugLocationsVector MergedLL;
   PrevEndAddress = 0;
-  PrevLoc = nullptr;
-  for (const auto &Entry : OutputLL.Entries) {
-    if (Entry.Begin <= PrevEndAddress && *PrevLoc == Entry.Loc) {
-      MergedLL.Entries.back().End = std::max(Entry.End,
-                                             MergedLL.Entries.back().End);
+  PrevExpr = nullptr;
+  for (const auto &Entry : OutputLL) {
+    if (Entry.LowPC <= PrevEndAddress && *PrevExpr == Entry.Expr) {
+      MergedLL.back().HighPC = std::max(Entry.HighPC, MergedLL.back().HighPC);
     } else {
-      const auto Begin = std::max(Entry.Begin, PrevEndAddress);
-      const auto End = std::max(Begin, Entry.End);
-      MergedLL.Entries.emplace_back(DWARFDebugLoc::Entry{Begin,
-                                                         End,
-                                                         Entry.Loc});
+      const uint64_t Begin = std::max(Entry.LowPC, PrevEndAddress);
+      const uint64_t End = std::max(Begin, Entry.HighPC);
+      MergedLL.emplace_back(DebugLocationEntry{Begin, End, Entry.Expr});
     }
-    PrevEndAddress = MergedLL.Entries.back().End;
-    PrevLoc = &MergedLL.Entries.back().Loc;
+    PrevEndAddress = MergedLL.back().HighPC;
+    PrevExpr = &MergedLL.back().Expr;
   }
 
   return MergedLL;

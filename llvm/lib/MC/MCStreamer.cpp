@@ -666,6 +666,14 @@ void MCStreamer::emitCFIReturnColumn(int64_t Register) {
   CurFrame->RAReg = Register;
 }
 
+void MCStreamer::emitCFIInstruction(const MCCFIInstruction &Inst) {
+  MCSymbol *Label = emitCFILabel();
+  MCCFIInstruction Instruction = Inst;
+  Instruction.setLabel(Label);
+  MCDwarfFrameInfo *CurFrame = getCurrentDwarfFrameInfo();
+  CurFrame->Instructions.push_back(Instruction);
+}
+
 WinEH::FrameInfo *MCStreamer::EnsureValidWinFrameInfo(SMLoc Loc) {
   const MCAsmInfo *MAI = Context.getAsmInfo();
   if (!MAI->usesWindowsCFI()) {
@@ -1184,6 +1192,8 @@ void MCStreamer::emitValueToAlignment(unsigned ByteAlignment, int64_t Value,
                                       unsigned MaxBytesToEmit) {}
 void MCStreamer::emitCodeAlignment(unsigned ByteAlignment,
                                    unsigned MaxBytesToEmit) {}
+void MCStreamer::emitNeverAlignCodeAtEnd(unsigned ByteAlignment, int64_t Value,
+                                         unsigned ValueSize) {}
 void MCStreamer::emitValueToOffset(const MCExpr *Offset, unsigned char Value,
                                    SMLoc Loc) {}
 void MCStreamer::emitBundleAlignMode(unsigned AlignPow2) {}

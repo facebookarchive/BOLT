@@ -319,6 +319,10 @@ bool XCOFFObjectFile::isSectionVirtual(DataRefImpl Sec) const {
                    : toSection32(Sec)->FileOffsetToRawData == 0;
 }
 
+bool XCOFFObjectFile::isSectionReadOnly(DataRefImpl Sec) const {
+  report_fatal_error("isSectionReadOnly not implemented yet");
+}
+
 relocation_iterator XCOFFObjectFile::section_rel_begin(DataRefImpl Sec) const {
   if (is64Bit())
     report_fatal_error("64-bit support not implemented yet");

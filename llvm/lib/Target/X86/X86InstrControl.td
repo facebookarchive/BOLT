@@ -206,7 +206,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 }
 
 // Loop instructions
-let SchedRW = [WriteJump] in {
+let isBranch = 1, isTerminator = 1, SchedRW = [WriteJump] in {
 def LOOP   : Ii8PCRel<0xE2, RawFrm, (outs), (ins brtarget8:$dst), "loop\t$dst", []>;
 def LOOPE  : Ii8PCRel<0xE1, RawFrm, (outs), (ins brtarget8:$dst), "loope\t$dst", []>;
 def LOOPNE : Ii8PCRel<0xE0, RawFrm, (outs), (ins brtarget8:$dst), "loopne\t$dst", []>;
@@ -297,14 +297,16 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
   def TCRETURNmi : PseudoI<(outs), (ins i32mem_TC:$dst, i32imm:$offset),
                            []>, Sched<[WriteJumpLd]>;
 
-  def TAILJMPd : PseudoI<(outs), (ins i32imm_brtarget:$dst),
-                         []>, Sched<[WriteJump]>;
+  def TAILJMPd : Ii32PCRel<0xE9, RawFrm, (outs), (ins i32imm_brtarget:$dst),
+                           "jmp\t$dst", []>, Sched<[WriteJump]>;
 
-  def TAILJMPr : PseudoI<(outs), (ins ptr_rc_tailcall:$dst),
-                         []>, Sched<[WriteJump]>;
-  let mayLoad = 1 in
-  def TAILJMPm : PseudoI<(outs), (ins i32mem_TC:$dst),
-                         []>, Sched<[WriteJumpLd]>;
+  let isIndirectBranch = 1 in {
+    def TAILJMPr : I<0xFF, MRM4r, (outs), (ins ptr_rc_tailcall:$dst),
+                     "jmp{l}\t{*}$dst", []>, Sched<[WriteJump]>;
+    let mayLoad = 1 in
+    def TAILJMPm : I<0xFF, MRM4m, (outs), (ins i32mem_TC:$dst),
+                     "jmp{l}\t{*}$dst", []>, Sched<[WriteJumpLd]>;
+  }
 }
 
 // Conditional tail calls are similar to the above, but they are branches
