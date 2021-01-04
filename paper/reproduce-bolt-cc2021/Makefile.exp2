@@ -1,0 +1,98 @@
+# Makefile recipes to reproduce BOLT results reported in CC 2021
+#
+# ==============================================================================
+# Experiment section 5.4 - tradeoff between BOLT processing time and clang perf
+# Explore the impact on clang performance by reducing the number of functions
+# BOLT optimizes on it.
+#
+# Note: This is a regular Makefile. If you want to re-do a step, simply delete
+# the rule target or touch one of its prerequisites to be more updated than the
+# target.
+
+SHELL          := /bin/bash
+
+TOPLEV         := $(shell pwd)
+INPUTBIN       := $(TOPLEV)/clang
+
+MEASUREMENTS   := $(TOPLEV)/data
+COMPARISON     := $(TOPLEV)/comparison.exp2.txt
+RESULTS        := $(TOPLEV)/results.exp2.txt
+NUM_EXP        := 3
+EXPERIMENTS    := $(shell seq 1 $(NUM_EXP))
+TIMER          := /usr/bin/time -f '%e,wall\n%M,mem\n%U,user'
+
+.PHONY: all clean clean_measurements clean_side_b
+
+all: print_results
+
+# ==============================================================================
+# Step 2.1: Measure bolt run time to process a large input
+# to evaluate performance - comparison
+$(MEASUREMENTS).base:
+	for number in $(EXPERIMENTS); do \
+	  echo Measuring trial number $${number} for base ; \
+      $(TIMER) -o ${@}.exp.$${number} -- \
+      ./clang input.cpp -std=c++11 -O2 -c -o $(@).o \
+        &>> ${@}.log.$${number} ;\
+	done
+	cat ${@}.exp.* &> ${@}
+
+$(MEASUREMENTS).test: $(INPUTBIN)
+	for number in $(EXPERIMENTS); do \
+	  echo Measuring trial number $${number} for test ; \
+	    $(TIMER) -o ${@}.exp.$${number} -- \
+      $(INPUTBIN) input.cpp -std=c++11 -O2 -c -o $(@).o \
+        &>> ${@}.log.$${number} ;\
+	done
+	cat ${@}.exp.* &> ${@}
+
+# Step 7: Aggregate comparison results in a single file
+$(TOPLEV)/aggregate.txt: $(MEASUREMENTS).base $(MEASUREMENTS).test
+	cat $^ &> $@
+
+AWK_SCRIPT := '                                                               \
+	BEGIN                                                                       \
+	{                                                                           \
+	  sum = 0;                                                                  \
+	  sumsq = 0;                                                                \
+	};                                                                          \
+	{                                                                           \
+    sum += $$1;                                                               \
+    sumsq += ($$1)^2;                                                         \
+	  printf "Data point %s: %f\n", NR, $$1                                     \
+  }                                                                           \
+  END                                                                         \
+	{                                                                           \
+	  printf "Mean: %f StdDev: %f\n", sum/NR, sqrt((sumsq - sum^2/NR)/(NR-1))   \
+	};  \
+'
+
+# Final step: Compare and print results for both wall time and memory
+print_results: $(TOPLEV)/aggregate.txt
+	echo "WALL TIME SIDE A:"
+	cat $< | grep wall | head -n $(NUM_EXP) | awk -F',' \
+	  $(AWK_SCRIPT) |& tee $(COMPARISON).a
+	echo "WALL TIME SIDE B:"
+	cat $< | grep wall | tail -n $(NUM_EXP) | awk -F',' \
+	  $(AWK_SCRIPT) |& tee $(COMPARISON).b
+	ASIDE=`cat $(COMPARISON).a | tail -n 1 | awk '{print $$2}'` \
+	  BSIDE=`cat $(COMPARISON).b | tail -n 1 | awk '{print $$2}'` \
+	  AERR=`cat $(COMPARISON).a | tail -n 1 | awk '{print $$4}'` \
+	  BERR=`cat $(COMPARISON).b | tail -n 1 | awk '{print $$4}'` \
+	  bash <<< 'COMP=$$(echo "scale=8;($$ASIDE / $$BSIDE)" | bc); \
+	          COMPERR=$$(echo "scale=8;($$ASIDE / $$BSIDE) * sqrt (($$AERR/$$ASIDE)^2 + ($$BERR/$$BSIDE)^2)" | bc); \
+	          echo -ne "runtime: $${COMP} % +- $${COMPERR} faster than \
+	          baseline, average of $(NUM_EXP) experiments\n"' |& \
+	  tee -a $(RESULTS)
+
+
+# Cleaning steps
+# clean deletes final results, so experiments can be restarted
+#   without rebuilding everything
+clean:
+	-rm $(MEASUREMENTS).* $(COMPARISON).* $(RESULTS) $(TOPLEV)/aggregate.txt
+
+clean_measurements: clean
+
+clean_side_b:
+	-rm $(TOPLEV)/aggregate.txt $(RESULTS) $(MEASUREMENTS).test $(MEASUREMENTS).test.log.* $(MEASUREMENTS).test.o
