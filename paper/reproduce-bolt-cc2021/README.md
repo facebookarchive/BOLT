@@ -1,4 +1,4 @@
-# reproduce-bolt-cc2021
+# Artifact for paper Lightning BOLT: Powerful, Fast and Scalable Binary Optimization
 
 The open-source workload evaluated in this paper is clang 11 and gcc 10. These
 two workloads need to be bootstrapped (built with themselves). Our goal is
@@ -44,7 +44,7 @@ disk. Having less than 10GB will cause Linux to silently kill your experiments.
 Edit Makefile and change NUM\_EXP to control how many repetitions of the same run
 will be used to reduce noise. Default is 5. Recommended is 20 depending on your
 environment, but will significantly increase experiment total run time. The same
-should be done at exp2.sh by changing the line containing NUM\_EXP=. For exp2,
+should be done at exp2.sh by changing both lines containing NUM\_EXP=. For exp2,
 the default is 3. Recommended is 20, but may take several hours to complete if
 set up in this way.
 
@@ -130,38 +130,8 @@ This will bootstrap clang-11 and gcc-10 and will build BOLT.
 
 ### Hardware requirements
 
-available to build your image to speed up the build. Please have at least
-30GB of disk available for intermediate build artifacts.
-
-### Troubleshooting
-
-The first thing to check if something goes wrong is to make sure your docker
-installation has enough space for building. If you need to free up docker
-space, use commands such as "docker system prune" to remove unused containers,
-cached build images and more, but please be careful as this will delete data.
-The second most common error is running out of RAM because you set NUM\_CORES
-too high. Lower NUM\_CORES to meet your RAM availability.
-
-## Running experiments outside of docker
-
-You are free to run this Makefile and scripts in any system that meets the
-software prerequisites. You have higher chances of succeeding by doing this
-on a system that you already know can build clang-11 and gcc-10. Make sure
-you have these ubuntu packages available (or the equivalent package for your
-distro):
-
-- git
-- build-essential
-- linux-tools-generic (Linux perf)
-- cmake
-- ninja-build
-- bc (used by scripts)
-- g++-multilib (used by BOLT)
-- time (used by scripts)
-- flex (used by gcc)
-- bison (used by gcc)
-- fileBootstrapping the compilers is quite demanding and may take multiple hours
-on most systems. Edit Makefile and adjust NUM_CORES to the number of cores
+Bootstrapping the compilers is quite demanding and may take multiple hours
+on most systems. Edit Makefile and adjust NUM\_CORES to the number of cores
 available to build your image to speed up the build. Please have at least
 30GB of disk available for intermediate build artifacts.
 
@@ -227,9 +197,11 @@ to make the profile available to your user.
 
 The system where you run the experiments matters. That's why it is easier to run
 in Ubuntu 18.04 or inside the docker container based on Ubuntu. The reason for
-this is because BOLT profile depends on the binary having the same code for a
-given function that it will optimize in order to be successful. When you change
-systems, even though we bootstrap clang-11, it can end up with slightly different
-code, rendering the .fdata files that we make available stale. Therefore, if
+that is because BOLT profile, in order to be effective, depends on the input binary
+used in BOLT being the same one used when the profile was created or at least having
+the same instructions in important hot functions. When you change systems, even
+though we bootstrap clang-11, clang-11 can end up containing slightly different
+instructions than it would in another system, rendering the .fdata files that we
+make available quite stale. This does not happen for gcc-10. Therefore, if
 you change the system, you need to recollect profile (regenerate the fdata file)
-and you need the disk space and time required to do that.
+for clang-11 and you need the disk space and time required to do that.
