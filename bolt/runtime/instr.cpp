@@ -566,12 +566,98 @@ FunctionDescription::FunctionDescription(const uint8_t *FuncDesc) {
 /// Read and mmap descriptions written by BOLT from the executable's notes
 /// section
 #if defined(HAVE_ELF_H) and !defined(__APPLE__)
+#define BUF_SIZE 1024
+#define NAME_MAX 256
+#define ADDR_SIZE 32
+
+void *__attribute__((noinline)) __get_pc() {
+  return __builtin_extract_return_addr(__builtin_return_address(0));
+}
+
+/// Get full path to the real binary by getting current virtual address
+/// and searching for the appropriate link in address range in
+/// /proc/self/map_files
+static char *getBinaryPath() {
+  const char dirPath[] = "/proc/self/map_files/";
+  static char target_path[NAME_MAX] = {};
+  char buf[BUF_SIZE], start[ADDR_SIZE], end[ADDR_SIZE];
+  char findBuf[NAME_MAX];
+  char *strcp;
+  int lenS, lenE;
+  long nread;
+  unsigned long curAddr, saddr, eaddr;
+  struct dirent *d;
+
+  if (target_path[0] != '\0')
+    return target_path;
+
+  curAddr = (unsigned long)__get_pc();
+  uint64_t FDdir = __open(dirPath,
+                          /*flags=*/0 /*O_RDONLY*/,
+                          /*mode=*/0666);
+  assert(static_cast<int64_t>(FDdir) > 0,
+         "failed to open /proc/self/map_files");
+
+  for (;;) {
+    nread = __getdents(FDdir, (struct dirent *)buf, BUF_SIZE);
+    assert(static_cast<int64_t>(nread) != -1, "failed to get folder entries");
+    if (nread == 0)
+      break;
+    for (long bpos = 0; bpos < nread; bpos += d->d_reclen) {
+      d = (struct dirent *)(buf + bpos);
+      strcp = d->d_name;
+
+      lenS = 0, lenE = 0;
+      while (*strcp != '-') {
+        if (*strcp == '\0') {
+          lenS = 0;
+          break;
+        }
+        *strcp++;
+        lenS++;
+      }
+      if (lenS == 0)
+        continue;
+      *strcp++;
+      while (*strcp != '\0') {
+        *strcp++;
+        lenE++;
+      }
+      assert(lenS + lenE < ADDR_SIZE, "file name too long");
+
+      strCopy(start, d->d_name, lenS);
+      strCopy(end, d->d_name + lenS + 1, lenE);
+      start[lenS] = '\0';
+      end[lenE] = '\0';
+      saddr = hexToLong(start);
+      eaddr = hexToLong(end);
+
+      if (curAddr >= saddr && curAddr <= eaddr) {
+        strCopy(findBuf, dirPath);
+        strCopy(findBuf + sizeof(dirPath) - 1, d->d_name);
+        findBuf[sizeof(dirPath) + lenS + lenE] = '\0';
+        lenS = __readlink(findBuf, target_path, sizeof(target_path));
+        assert(lenS != -1 && lenS != BUF_SIZE, "readlink error");
+        target_path[lenS] = '\0';
+        goto end;
+      }
+    }
+  }
+  return NULL;
+end:
+  return target_path;
+}
+
 ProfileWriterContext readDescriptions() {
   ProfileWriterContext Result;
-  uint64_t FD = __open("/proc/self/exe",
+  char *binPath = getBinaryPath();
+  assert(binPath[0] != '\0', "failed to find binary path");
+
+  uint64_t FD = __open(binPath,
                        /*flags=*/0 /*O_RDONLY*/,
                        /*mode=*/0666);
-  assert(static_cast<int64_t>(FD) > 0, "Failed to open /proc/self/exe");
+  assert(static_cast<int64_t>(FD) > 0, "failed to open binary path");
+
   Result.FileDesc = FD;
 
   // mmap our binary to memory
