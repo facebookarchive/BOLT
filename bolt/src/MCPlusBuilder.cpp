@@ -442,9 +442,7 @@ MCPlusBuilder::getRegSize(MCPhysReg Reg) const {
   for (auto I = RegInfo->regclass_begin(), E = RegInfo->regclass_end(); I != E;
        ++I) {
     for (MCPhysReg Reg : *I) {
-      //FIXME! size information moved out of MC layer D47199
-//      SizeMap[Reg] = I->getSize();
-      SizeMap[Reg] = 64;
+      SizeMap[Reg] = I->getPhysRegSize();
     }
   }
 

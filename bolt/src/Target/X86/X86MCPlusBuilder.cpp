@@ -1366,10 +1366,7 @@ public:
           continue;
         if (static_cast<int>(I) >= MemOpNo && I < X86::AddrNumOperands)
           continue;
-        // FIXME!! According to https://reviews.llvm.org/D50285 migrate
-        // to TRI TargetRegisterInfo::getRegSizeInBits()
-//        Sz = RegInfo->getRegClass(MCII.OpInfo[I].RegClass).getPhysRegSize();
-        Sz = 0;
+        Sz = RegInfo->getRegClass(MCII.OpInfo[I].RegClass).getPhysRegSize();
         break;
       }
       I = {Sz, IsLoad, IsStore, false, false};
