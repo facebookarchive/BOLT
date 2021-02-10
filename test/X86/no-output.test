@@ -26,4 +26,4 @@ main:
 .size main, .-main
 
 
-# CHECK: Skipping writing final binary
+# CHECK: skipping writing final binary
