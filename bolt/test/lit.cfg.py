@@ -49,6 +49,7 @@ tool_dirs = [config.llvm_tools_dir,
 
 linker_tool = llvm_config.use_llvm_tool('ld', required=True)
 tools = [
+    ToolSubst('llvm-dwarfdump', unresolved='fatal'),
     ToolSubst('llvm-bolt', unresolved='fatal'),
     ToolSubst('perf2bolt', unresolved='fatal'),
     ToolSubst('yaml2obj', unresolved='fatal'),
