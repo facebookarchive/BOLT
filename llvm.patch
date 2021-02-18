@@ -4219,6 +4219,68 @@ index fa7c352a1b6..35d28c19fc2 100644
 +
    UseIntegratedAssembler = true;
  }
+diff --git a/lib/Target/X86/X86ISelLowering.cpp b/lib/Target/X86/X86ISelLowering.cpp
+index c1fca9f1c188..421aa4edaaec 100644
+--- a/lib/Target/X86/X86ISelLowering.cpp
++++ b/lib/Target/X86/X86ISelLowering.cpp
+@@ -28063,11 +28063,16 @@ X86TargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
+         MI.getOpcode() == X86::RDFLAGS32 ? X86::PUSHF32 : X86::PUSHF64;
+     unsigned Pop = MI.getOpcode() == X86::RDFLAGS32 ? X86::POP32r : X86::POP64r;
+     MachineInstr *Push = BuildMI(*BB, MI, DL, TII->get(PushF));
+-    // Permit reads of the FLAGS register without it being defined.
++    // Permit reads of the EFLAGS and DF registers without them being defined.
+     // This intrinsic exists to read external processor state in flags, such as
+     // the trap flag, interrupt flag, and direction flag, none of which are
+     // modeled by the backend.
++    assert(Push->getOperand(2).getReg() == X86::EFLAGS &&
++           "Unexpected register in operand!");
+     Push->getOperand(2).setIsUndef();
++    assert(Push->getOperand(3).getReg() == X86::DF &&
++           "Unexpected register in operand!");
++    Push->getOperand(3).setIsUndef();
+     BuildMI(*BB, MI, DL, TII->get(Pop), MI.getOperand(0).getReg());
+ 
+     MI.eraseFromParent(); // The pseudo is gone now.
+diff --git a/lib/Target/X86/X86InstrCompiler.td b/lib/Target/X86/X86InstrCompiler.td
+index 13ae48bccb25..1d2d89788126 100644
+--- a/lib/Target/X86/X86InstrCompiler.td
++++ b/lib/Target/X86/X86InstrCompiler.td
+@@ -473,7 +473,7 @@ let Defs = [EAX, ECX, EDX, FP0, FP1, FP2, FP3, FP4, FP5, FP6, FP7,
+             ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7,
+             MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
+             XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
+-            XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
++            XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS, DF],
+     usesCustomInserter = 1, Uses = [ESP, SSP] in {
+ def TLS_addr32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
+                   "# TLS_addr32",
+@@ -493,7 +493,7 @@ let Defs = [RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11,
+             ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7,
+             MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
+             XMM0, XMM1, XMM2, XMM3, XMM4, XMM5, XMM6, XMM7,
+-            XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS],
++            XMM8, XMM9, XMM10, XMM11, XMM12, XMM13, XMM14, XMM15, EFLAGS, DF],
+     usesCustomInserter = 1, Uses = [RSP, SSP] in {
+ def TLS_addr64 : I<0, Pseudo, (outs), (ins i64mem:$sym),
+                    "# TLS_addr64",
+@@ -509,7 +509,7 @@ def TLS_base_addr64 : I<0, Pseudo, (outs), (ins i64mem:$sym),
+ // For i386, the address of the thunk is passed on the stack, on return the
+ // address of the variable is in %eax.  %ecx is trashed during the function
+ // call.  All other registers are preserved.
+-let Defs = [EAX, ECX, EFLAGS],
++let Defs = [EAX, ECX, EFLAGS, DF],
+     Uses = [ESP, SSP],
+     usesCustomInserter = 1 in
+ def TLSCall_32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
+@@ -522,7 +522,7 @@ def TLSCall_32 : I<0, Pseudo, (outs), (ins i32mem:$sym),
+ // %rdi. The lowering will do the right thing with RDI.
+ // On return the address of the variable is in %rax.  All other
+ // registers are preserved.
+-let Defs = [RAX, EFLAGS],
++let Defs = [RAX, EFLAGS, DF],
+     Uses = [RSP, SSP],
+     usesCustomInserter = 1 in
+ def TLSCall_64 : I<0, Pseudo, (outs), (ins i64mem:$sym),
 diff --git a/lib/Target/X86/X86InstrControl.td b/lib/Target/X86/X86InstrControl.td
 index 9fba65c6cf6..1c8eb2708fc 100644
 --- a/lib/Target/X86/X86InstrControl.td
@@ -4252,27 +4314,211 @@ index 9fba65c6cf6..1c8eb2708fc 100644
  }
  
  // Conditional tail calls are similar to the above, but they are branches
+diff --git a/lib/Target/X86/X86InstrInfo.cpp b/lib/Target/X86/X86InstrInfo.cpp
+index 5f1acb2baac7..8ecc26897ee6 100644
+--- a/lib/Target/X86/X86InstrInfo.cpp
++++ b/lib/Target/X86/X86InstrInfo.cpp
+@@ -9571,8 +9571,9 @@ bool X86InstrInfo::
+ isSafeToMoveRegClassDefs(const TargetRegisterClass *RC) const {
+   // FIXME: Return false for x87 stack register classes for now. We can't
+   // allow any loads of these registers before FpGet_ST0_80.
+-  return !(RC == &X86::CCRRegClass || RC == &X86::RFP32RegClass ||
+-           RC == &X86::RFP64RegClass || RC == &X86::RFP80RegClass);
++  return !(RC == &X86::CCRRegClass || RC == &X86::DFCCRRegClass ||
++           RC == &X86::RFP32RegClass || RC == &X86::RFP64RegClass ||
++           RC == &X86::RFP80RegClass);
+ }
+ 
+ /// Return a virtual register initialized with the
 diff --git a/lib/Target/X86/X86InstrInfo.td b/lib/Target/X86/X86InstrInfo.td
 index 5eaf55b09f2e..10d547f01ef5 100644
 --- a/lib/Target/X86/X86InstrInfo.td
 +++ b/lib/Target/X86/X86InstrInfo.td
-@@ -2126,13 +2126,13 @@ def INSL : I<0x6D, RawFrmDst, (outs), (ins dstidx32:$dst),
+@@ -1243,18 +1243,18 @@ let mayLoad = 1, mayStore = 1, usesCustomInserter = 1,
  
- // Flag instructions
- let SchedRW = [WriteALU] in {
+ let mayLoad = 1, mayStore = 1, usesCustomInserter = 1,
+     SchedRW = [WriteRMW] in {
+-  let Defs = [ESP, EFLAGS], Uses = [ESP] in
++  let Defs = [ESP, EFLAGS, DF], Uses = [ESP] in
+   def WRFLAGS32 : PseudoI<(outs), (ins GR32:$src),
+                    [(int_x86_flags_write_u32 GR32:$src)]>,
+                 Requires<[Not64BitMode]>;
+ 
+-  let Defs = [RSP, EFLAGS], Uses = [RSP] in
++  let Defs = [RSP, EFLAGS, DF], Uses = [RSP] in
+   def WRFLAGS64 : PseudoI<(outs), (ins GR64:$src),
+                    [(int_x86_flags_write_u64 GR64:$src)]>,
+                 Requires<[In64BitMode]>;
+ }
+ 
+-let Defs = [ESP, EFLAGS], Uses = [ESP], mayLoad = 1, hasSideEffects=0,
++let Defs = [ESP, EFLAGS, DF], Uses = [ESP], mayLoad = 1, hasSideEffects=0,
+     SchedRW = [WriteLoad] in {
+ def POPF16   : I<0x9D, RawFrm, (outs), (ins), "popf{w}", [], IIC_POP_F>,
+                 OpSize16;
+@@ -1262,7 +1262,7 @@ def POPF32   : I<0x9D, RawFrm, (outs), (ins), "popf{l|d}", [], IIC_POP_FD>,
+                 OpSize32, Requires<[Not64BitMode]>;
+ }
+ 
+-let Defs = [ESP], Uses = [ESP, EFLAGS], mayStore = 1, hasSideEffects=0,
++let Defs = [ESP], Uses = [ESP, EFLAGS, DF], mayStore = 1, hasSideEffects=0,
+     SchedRW = [WriteStore] in {
+ def PUSHF16  : I<0x9C, RawFrm, (outs), (ins), "pushf{w}", [], IIC_PUSH_F>,
+                  OpSize16;
+@@ -1302,10 +1302,10 @@ def PUSH64i32  : Ii32S<0x68, RawFrm, (outs), (ins i64i32imm:$imm),
+                     Requires<[In64BitMode]>;
+ }
+ 
+-let Defs = [RSP, EFLAGS], Uses = [RSP], mayLoad = 1, hasSideEffects=0 in
++let Defs = [RSP, EFLAGS, DF], Uses = [RSP], mayLoad = 1, hasSideEffects=0 in
+ def POPF64   : I<0x9D, RawFrm, (outs), (ins), "popfq", [], IIC_POP_FD>,
+                OpSize32, Requires<[In64BitMode]>, Sched<[WriteLoad]>;
+-let Defs = [RSP], Uses = [RSP, EFLAGS], mayStore = 1, hasSideEffects=0 in
++let Defs = [RSP], Uses = [RSP, EFLAGS, DF], mayStore = 1, hasSideEffects=0 in
+ def PUSHF64    : I<0x9C, RawFrm, (outs), (ins), "pushfq", [], IIC_PUSH_F>,
+                  OpSize32, Requires<[In64BitMode]>, Sched<[WriteStore]>;
+ 
+@@ -1390,8 +1390,7 @@ def BSR64rm  : RI<0xBD, MRMSrcMem, (outs GR64:$dst), (ins i64mem:$src),
+ } // Defs = [EFLAGS]
+ 
+ let SchedRW = [WriteMicrocoded] in {
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [EDI,ESI], Uses = [EDI,ESI,EFLAGS] in {
++let Defs = [EDI,ESI], Uses = [EDI,ESI,DF] in {
+ def MOVSB : I<0xA4, RawFrmDstSrc, (outs), (ins dstidx8:$dst, srcidx8:$src),
+               "movsb\t{$src, $dst|$dst, $src}", [], IIC_MOVS>;
+ def MOVSW : I<0xA5, RawFrmDstSrc, (outs), (ins dstidx16:$dst, srcidx16:$src),
+@@ -1403,38 +1402,35 @@ def MOVSQ : RI<0xA5, RawFrmDstSrc, (outs), (ins dstidx64:$dst, srcidx64:$src),
+                Requires<[In64BitMode]>;
+ }
+ 
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [EDI], Uses = [AL,EDI,EFLAGS] in
++let Defs = [EDI], Uses = [AL,EDI,DF] in
+ def STOSB : I<0xAA, RawFrmDst, (outs), (ins dstidx8:$dst),
+               "stosb\t{%al, $dst|$dst, al}", [], IIC_STOS>;
+-let Defs = [EDI], Uses = [AX,EDI,EFLAGS] in
++let Defs = [EDI], Uses = [AX,EDI,DF] in
+ def STOSW : I<0xAB, RawFrmDst, (outs), (ins dstidx16:$dst),
+               "stosw\t{%ax, $dst|$dst, ax}", [], IIC_STOS>, OpSize16;
+-let Defs = [EDI], Uses = [EAX,EDI,EFLAGS] in
++let Defs = [EDI], Uses = [EAX,EDI,DF] in
+ def STOSL : I<0xAB, RawFrmDst, (outs), (ins dstidx32:$dst),
+               "stos{l|d}\t{%eax, $dst|$dst, eax}", [], IIC_STOS>, OpSize32;
+-let Defs = [RDI], Uses = [RAX,RDI,EFLAGS] in
++let Defs = [RDI], Uses = [RAX,RDI,DF] in
+ def STOSQ : RI<0xAB, RawFrmDst, (outs), (ins dstidx64:$dst),
+                "stosq\t{%rax, $dst|$dst, rax}", [], IIC_STOS>,
+                Requires<[In64BitMode]>;
+ 
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [EDI,EFLAGS], Uses = [AL,EDI,EFLAGS] in
++let Defs = [EDI,EFLAGS], Uses = [AL,EDI,DF] in
+ def SCASB : I<0xAE, RawFrmDst, (outs), (ins dstidx8:$dst),
+               "scasb\t{$dst, %al|al, $dst}", [], IIC_SCAS>;
+-let Defs = [EDI,EFLAGS], Uses = [AX,EDI,EFLAGS] in
++let Defs = [EDI,EFLAGS], Uses = [AX,EDI,DF] in
+ def SCASW : I<0xAF, RawFrmDst, (outs), (ins dstidx16:$dst),
+               "scasw\t{$dst, %ax|ax, $dst}", [], IIC_SCAS>, OpSize16;
+-let Defs = [EDI,EFLAGS], Uses = [EAX,EDI,EFLAGS] in
++let Defs = [EDI,EFLAGS], Uses = [EAX,EDI,DF] in
+ def SCASL : I<0xAF, RawFrmDst, (outs), (ins dstidx32:$dst),
+               "scas{l|d}\t{$dst, %eax|eax, $dst}", [], IIC_SCAS>, OpSize32;
+-let Defs = [EDI,EFLAGS], Uses = [RAX,EDI,EFLAGS] in
++let Defs = [EDI,EFLAGS], Uses = [RAX,EDI,DF] in
+ def SCASQ : RI<0xAF, RawFrmDst, (outs), (ins dstidx64:$dst),
+                "scasq\t{$dst, %rax|rax, $dst}", [], IIC_SCAS>,
+                Requires<[In64BitMode]>;
+ 
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [EDI,ESI,EFLAGS], Uses = [EDI,ESI,EFLAGS] in {
++let Defs = [EDI,ESI,EFLAGS], Uses = [EDI,ESI,DF] in {
+ def CMPSB : I<0xA6, RawFrmDstSrc, (outs), (ins dstidx8:$dst, srcidx8:$src),
+               "cmpsb\t{$dst, $src|$src, $dst}", [], IIC_CMPS>;
+ def CMPSW : I<0xA7, RawFrmDstSrc, (outs), (ins dstidx16:$dst, srcidx16:$src),
+@@ -2076,8 +2072,7 @@ def DATA32_PREFIX : I<0x66, RawFrm, (outs),  (ins), "data32", [], IIC_NOP>,
+ } // SchedRW
+ 
+ // Repeat string operation instruction prefixes
+-// These use the DF flag in the EFLAGS register to inc or dec ECX
+-let Defs = [ECX], Uses = [ECX,EFLAGS], SchedRW = [WriteMicrocoded] in {
++let Defs = [ECX], Uses = [ECX,DF], SchedRW = [WriteMicrocoded] in {
+ // Repeat (used with INS, OUTS, MOVS, LODS and STOS)
+ def REP_PREFIX : I<0xF3, RawFrm, (outs),  (ins), "rep", []>;
+ // Repeat while not equal (used with CMPS and SCAS)
+@@ -2086,25 +2081,23 @@ def REPNE_PREFIX : I<0xF2, RawFrm, (outs),  (ins), "repne", []>;
+ 
+ // String manipulation instructions
+ let SchedRW = [WriteMicrocoded] in {
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [AL,ESI], Uses = [ESI,EFLAGS] in
++let Defs = [AL,ESI], Uses = [ESI,DF] in
+ def LODSB : I<0xAC, RawFrmSrc, (outs), (ins srcidx8:$src),
+               "lodsb\t{$src, %al|al, $src}", [], IIC_LODS>;
+-let Defs = [AX,ESI], Uses = [ESI,EFLAGS] in
++let Defs = [AX,ESI], Uses = [ESI,DF] in
+ def LODSW : I<0xAD, RawFrmSrc, (outs), (ins srcidx16:$src),
+               "lodsw\t{$src, %ax|ax, $src}", [], IIC_LODS>, OpSize16;
+-let Defs = [EAX,ESI], Uses = [ESI,EFLAGS] in
++let Defs = [EAX,ESI], Uses = [ESI,DF] in
+ def LODSL : I<0xAD, RawFrmSrc, (outs), (ins srcidx32:$src),
+               "lods{l|d}\t{$src, %eax|eax, $src}", [], IIC_LODS>, OpSize32;
+-let Defs = [RAX,ESI], Uses = [ESI,EFLAGS] in
++let Defs = [RAX,ESI], Uses = [ESI,DF] in
+ def LODSQ : RI<0xAD, RawFrmSrc, (outs), (ins srcidx64:$src),
+                "lodsq\t{$src, %rax|rax, $src}", [], IIC_LODS>,
+                Requires<[In64BitMode]>;
+ }
+ 
+ let SchedRW = [WriteSystem] in {
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [ESI], Uses = [DX,ESI,EFLAGS] in {
++let Defs = [ESI], Uses = [DX,ESI,DF] in {
+ def OUTSB : I<0x6E, RawFrmSrc, (outs), (ins srcidx8:$src),
+              "outsb\t{$src, %dx|dx, $src}", [], IIC_OUTS>;
+ def OUTSW : I<0x6F, RawFrmSrc, (outs), (ins srcidx16:$src),
+@@ -2113,8 +2106,7 @@ def OUTSL : I<0x6F, RawFrmSrc, (outs), (ins srcidx32:$src),
+               "outs{l|d}\t{$src, %dx|dx, $src}", [], IIC_OUTS>, OpSize32;
+ }
+ 
+-// These uses the DF flag in the EFLAGS register to inc or dec EDI and ESI
+-let Defs = [EDI], Uses = [DX,EDI,EFLAGS] in {
++let Defs = [EDI], Uses = [DX,EDI,DF] in {
+ def INSB : I<0x6C, RawFrmDst, (outs), (ins dstidx8:$dst),
+              "insb\t{%dx, $dst|$dst, dx}", [], IIC_INS>;
+ def INSW : I<0x6D, RawFrmDst, (outs), (ins dstidx16:$dst),
+@@ -2124,19 +2116,22 @@ def INSL : I<0x6D, RawFrmDst, (outs), (ins dstidx32:$dst),
+ }
+ }
+ 
+-// Flag instructions
+-let SchedRW = [WriteALU] in {
 -def CLC : I<0xF8, RawFrm, (outs), (ins), "clc", [], IIC_CLC>;
 -def STC : I<0xF9, RawFrm, (outs), (ins), "stc", [], IIC_STC>;
+-def CLI : I<0xFA, RawFrm, (outs), (ins), "cli", [], IIC_CLI>;
+-def STI : I<0xFB, RawFrm, (outs), (ins), "sti", [], IIC_STI>;
++// EFLAGS management instructions.
++let SchedRW = [WriteALU], Defs = [EFLAGS], Uses = [EFLAGS] in {
 +def CLC : I<0xF8, RawFrm, (outs), (ins), "clc", [], IIC_CLC_CMC_STC>;
 +def STC : I<0xF9, RawFrm, (outs), (ins), "stc", [], IIC_CLC_CMC_STC>;
- def CLI : I<0xFA, RawFrm, (outs), (ins), "cli", [], IIC_CLI>;
- def STI : I<0xFB, RawFrm, (outs), (ins), "sti", [], IIC_STI>;
++def CMC : I<0xF5, RawFrm, (outs), (ins), "cmc", [], IIC_CLC_CMC_STC>;
++}
++
++// DF management instructions.
++// FIXME: These are a bit more expensive than CLC and STC. We should consider
++// adjusting their schedule bucket.
++let SchedRW = [WriteALU], Defs = [DF] in {
  def CLD : I<0xFC, RawFrm, (outs), (ins), "cld", [], IIC_CLD>;
  def STD : I<0xFD, RawFrm, (outs), (ins), "std", [], IIC_STD>;
 -def CMC : I<0xF5, RawFrm, (outs), (ins), "cmc", [], IIC_CMC>;
-+def CMC : I<0xF5, RawFrm, (outs), (ins), "cmc", [], IIC_CLC_CMC_STC>;
- 
- def CLTS : I<0x06, RawFrm, (outs), (ins), "clts", [], IIC_CLTS>, TB;
+-
+-def CLTS : I<0x06, RawFrm, (outs), (ins), "clts", [], IIC_CLTS>, TB;
  }
+ 
++
+ // Table lookup instructions
+ let Uses = [AL,EBX], Defs = [AL], hasSideEffects = 0, mayLoad = 1 in
+ def XLAT : I<0xD7, RawFrm, (outs), (ins), "xlatb", [], IIC_XLAT>,
 diff --git a/lib/Target/X86/X86InstrSystem.td b/lib/Target/X86/X86InstrSystem.td
 index f25f1b0e8e4..8a369331256 100644
 --- a/lib/Target/X86/X86InstrSystem.td
@@ -4287,6 +4533,62 @@ index f25f1b0e8e4..8a369331256 100644
  def RSM : I<0xAA, RawFrm, (outs), (ins), "rsm", [], IIC_RSM>, TB;
  
  // Interrupt and SysCall Instructions.
+@@ -699,6 +700,19 @@ let Uses = [RAX, RBX, RCX, RDX], Defs = [RAX, RBX, RCX] in {
+ } // Uses, Defs
+ } // SchedRW
+ 
++//===----------------------------------------------------------------------===//
++// TS flag control instruction.
++let SchedRW = [WriteSystem] in {
++def CLTS : I<0x06, RawFrm, (outs), (ins), "clts", [], IIC_CLTS>, TB;
++}
++
++//===----------------------------------------------------------------------===//
++// IF (inside EFLAGS) management instructions.
++let SchedRW = [WriteSystem], Uses = [EFLAGS], Defs = [EFLAGS] in {
++def CLI : I<0xFA, RawFrm, (outs), (ins), "cli", [], IIC_CLI>;
++def STI : I<0xFB, RawFrm, (outs), (ins), "sti", [], IIC_STI>;
++}
++
+ //===----------------------------------------------------------------------===//
+ // RDPID Instruction
+ let SchedRW = [WriteSystem] in {
+diff --git a/lib/Target/X86/X86RegisterInfo.td b/lib/Target/X86/X86RegisterInfo.td
+index d53bf6565e57..f652e19d9bd2 100644
+--- a/lib/Target/X86/X86RegisterInfo.td
++++ b/lib/Target/X86/X86RegisterInfo.td
+@@ -265,9 +265,19 @@ def ST7 : X86Reg<"st(7)", 7>, DwarfRegNum<[40, 19, 18]>;
+ // Floating-point status word
+ def FPSW : X86Reg<"fpsw", 0>;
+ 
+-// Status flags register
++// Status flags register.
++//
++// Note that some flags that are commonly thought of as part of the status
++// flags register are modeled separately. Typically this is due to instructions
++// reading and updating those flags independently of all the others. We don't
++// want to create false dependencies between these instructions and so we use
++// a separate register to model them.
+ def EFLAGS : X86Reg<"flags", 0>;
+ 
++// The direction flag.
++def DF : X86Reg<"DF", 0>;
++
++
+ // Segment registers
+ def CS : X86Reg<"cs", 1>;
+ def DS : X86Reg<"ds", 3>;
+@@ -510,6 +520,10 @@ def FPCCR : RegisterClass<"X86", [i16], 16, (add FPSW)> {
+   let CopyCost = -1;  // Don't allow copying of status registers.
+   let isAllocatable = 0;
+ }
++def DFCCR : RegisterClass<"X86", [i32], 32, (add DF)> {
++  let CopyCost = -1;  // Don't allow copying of status registers.
++  let isAllocatable = 0;
++}
+ 
+ // AVX-512 vector/mask registers.
+ def VR512 : RegisterClass<"X86", [v16f32, v8f64, v64i8, v32i16, v16i32, v8i64],
 diff --git a/lib/Target/X86/X86Schedule.td b/lib/Target/X86/X86Schedule.td
 index 6136d96fcfb7..31778d397e6c 100644
 --- a/lib/Target/X86/X86Schedule.td
