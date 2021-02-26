@@ -49,6 +49,14 @@ cl::opt<uint32_t> InstrumentationSleepTime(
              "program and the profile is not being dumped at the end."),
     cl::init(0), cl::Optional, cl::cat(BoltInstrCategory));
 
+cl::opt<bool> InstrumentationNoCountersClear(
+    "instrumentation-no-counters-clear",
+    cl::desc("Don't clear counters across dumps "
+             "(use with instrumentation-sleep-time option)"),
+    cl::init(false),
+    cl::Optional,
+    cl::cat(BoltInstrCategory));
+
 cl::opt<bool>
     InstrumentHotOnly("instrument-hot-only",
                       cl::desc("only insert instrumentation on hot functions "

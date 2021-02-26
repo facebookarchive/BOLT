@@ -88,6 +88,8 @@ extern uint32_t __bolt_instr_num_ind_targets;
 extern uint32_t __bolt_instr_num_funcs;
 // Time to sleep across dumps (when we write the fdata profile to disk)
 extern uint32_t __bolt_instr_sleep_time;
+// Do not clear counters across dumps, rewrite file with the updated values
+extern bool __bolt_instr_no_counters_clear;
 // Filename to dump data to
 extern char __bolt_instr_filename[];
 // If true, append current PID to the fdata filename when creating it so
@@ -1415,13 +1417,16 @@ void watchProcess() {
     // of a command finishes before proceeding, so it is important to exit as
     // early as possible once our parent dies.
     if (__getppid() == 1) {
+      if (__bolt_instr_no_counters_clear)
+        __bolt_instr_data_dump();
       break;
     }
     if (++Ellapsed < __bolt_instr_sleep_time)
       continue;
     Ellapsed = 0;
     __bolt_instr_data_dump();
-    __bolt_instr_clear_counters();
+    if (__bolt_instr_no_counters_clear == false)
+      __bolt_instr_clear_counters();
   }
   DEBUG(report("My parent process is dead, bye!\n"));
   __exit(0);

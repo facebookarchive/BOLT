@@ -23,6 +23,7 @@ extern cl::OptionCategory BoltOptCategory;
 extern cl::opt<bool> InstrumentationFileAppendPID;
 extern cl::opt<std::string> InstrumentationFilename;
 extern cl::opt<uint32_t> InstrumentationSleepTime;
+extern cl::opt<bool> InstrumentationNoCountersClear;
 
 cl::opt<bool>
     Instrument("instrument",
@@ -110,6 +111,7 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   MCSymbol *InitPtr = BC.Ctx->getOrCreateSymbol("__bolt_instr_init_ptr");
   MCSymbol *FiniPtr = BC.Ctx->getOrCreateSymbol("__bolt_instr_fini_ptr");
   MCSymbol *SleepSym = BC.Ctx->getOrCreateSymbol("__bolt_instr_sleep_time");
+  MCSymbol *ClearSym = BC.Ctx->getOrCreateSymbol("__bolt_instr_no_counters_clear");
 
   Section->setAlignment(BC.RegularPageSize);
   Streamer.SwitchSection(Section);
@@ -127,6 +129,9 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   Streamer.EmitLabel(SleepSym);
   Streamer.EmitSymbolAttribute(SleepSym, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(opts::InstrumentationSleepTime, /*Size=*/4);
+  Streamer.EmitLabel(ClearSym);
+  Streamer.EmitSymbolAttribute(ClearSym, MCSymbolAttr::MCSA_Global);
+  Streamer.EmitIntValue(opts::InstrumentationNoCountersClear ? 1 : 0, /*Size=*/1);
   Streamer.EmitLabel(NumLocs);
   Streamer.EmitSymbolAttribute(NumLocs, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(Summary->Counters.size(), /*Size=*/4);
