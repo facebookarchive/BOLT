@@ -333,6 +333,36 @@ uint64_t __getppid() {
   return ret;
 }
 
+int __setpgid(uint64_t pid, uint64_t pgid) {
+  int ret;
+  __asm__ __volatile__("movq $109, %%rax\n"
+                       "syscall\n"
+                       : "=a"(ret)
+                       : "D"(pid), "S"(pgid)
+                       : "cc", "rcx", "r11", "memory");
+  return ret;
+}
+
+uint64_t __getpgid(uint64_t pid) {
+  uint64_t ret;
+  __asm__ __volatile__("movq $121, %%rax\n"
+                       "syscall\n"
+                       : "=a"(ret)
+                       : "D"(pid)
+                       : "cc", "rcx", "r11", "memory");
+  return ret;
+}
+
+int __kill(uint64_t pid, int sig) {
+  int ret;
+  __asm__ __volatile__("movq $62, %%rax\n"
+                       "syscall\n"
+                       : "=a"(ret)
+                       : "D"(pid), "S"(sig)
+                       : "cc", "rcx", "r11", "memory");
+  return ret;
+}
+
 #endif
 
 void reportError(const char *Msg, uint64_t Size) {

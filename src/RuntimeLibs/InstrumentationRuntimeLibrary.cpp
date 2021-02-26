@@ -24,6 +24,7 @@ extern cl::opt<bool> InstrumentationFileAppendPID;
 extern cl::opt<std::string> InstrumentationFilename;
 extern cl::opt<uint32_t> InstrumentationSleepTime;
 extern cl::opt<bool> InstrumentationNoCountersClear;
+extern cl::opt<bool> InstrumentationWaitForks;
 
 cl::opt<bool>
     Instrument("instrument",
@@ -112,6 +113,7 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   MCSymbol *FiniPtr = BC.Ctx->getOrCreateSymbol("__bolt_instr_fini_ptr");
   MCSymbol *SleepSym = BC.Ctx->getOrCreateSymbol("__bolt_instr_sleep_time");
   MCSymbol *ClearSym = BC.Ctx->getOrCreateSymbol("__bolt_instr_no_counters_clear");
+  MCSymbol *WaitForks = BC.Ctx->getOrCreateSymbol("__bolt_instr_wait_forks");
 
   Section->setAlignment(BC.RegularPageSize);
   Streamer.SwitchSection(Section);
@@ -129,12 +131,19 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   Streamer.EmitLabel(SleepSym);
   Streamer.EmitSymbolAttribute(SleepSym, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(opts::InstrumentationSleepTime, /*Size=*/4);
+
   Streamer.EmitLabel(ClearSym);
   Streamer.EmitSymbolAttribute(ClearSym, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(opts::InstrumentationNoCountersClear ? 1 : 0, /*Size=*/1);
+
+  Streamer.EmitLabel(WaitForks);
+  Streamer.EmitSymbolAttribute(WaitForks, MCSymbolAttr::MCSA_Global);
+  Streamer.EmitIntValue(opts::InstrumentationWaitForks ? 1 : 0, /*Size=*/1);
+
   Streamer.EmitLabel(NumLocs);
   Streamer.EmitSymbolAttribute(NumLocs, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(Summary->Counters.size(), /*Size=*/4);
+
   Streamer.EmitLabel(Summary->IndCallHandlerFunc);
   Streamer.EmitSymbolAttribute(Summary->IndCallHandlerFunc,
                                MCSymbolAttr::MCSA_Global);
@@ -142,6 +151,7 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
       MCSymbolRefExpr::create(
           Summary->InitialIndCallHandlerFunction->getSymbol(), *BC.Ctx),
       /*Size=*/8);
+
   Streamer.EmitLabel(Summary->IndTailCallHandlerFunc);
   Streamer.EmitSymbolAttribute(Summary->IndTailCallHandlerFunc,
                                MCSymbolAttr::MCSA_Global);
@@ -149,19 +159,23 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
       MCSymbolRefExpr::create(
           Summary->InitialIndTailCallHandlerFunction->getSymbol(), *BC.Ctx),
       /*Size=*/8);
+
   Streamer.EmitLabel(NumIndCalls);
   Streamer.EmitSymbolAttribute(NumIndCalls, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(Summary->IndCallDescriptions.size(), /*Size=*/4);
+
   Streamer.EmitLabel(NumIndCallTargets);
   Streamer.EmitSymbolAttribute(NumIndCallTargets, MCSymbolAttr::MCSA_Global);
   Streamer.EmitIntValue(Summary->IndCallTargetDescriptions.size(), /*Size=*/4);
+
   Streamer.EmitLabel(NumFuncs);
   Streamer.EmitSymbolAttribute(NumFuncs, MCSymbolAttr::MCSA_Global);
-
   Streamer.EmitIntValue(Summary->FunctionDescriptions.size(), /*Size=*/4);
+
   Streamer.EmitLabel(FilenameSym);
   Streamer.EmitBytes(opts::InstrumentationFilename);
   Streamer.emitFill(1, 0);
+
   Streamer.EmitLabel(UsePIDSym);
   Streamer.EmitIntValue(opts::InstrumentationFileAppendPID ? 1 : 0, /*Size=*/1);
 
@@ -169,6 +183,7 @@ void InstrumentationRuntimeLibrary::emitBinary(BinaryContext &BC,
   Streamer.EmitSymbolAttribute(InitPtr, MCSymbolAttr::MCSA_Global);
   Streamer.EmitValue(
       MCSymbolRefExpr::create(StartFunction->getSymbol(), *BC.Ctx), /*Size=*/8);
+
   if (FiniFunction) {
     Streamer.EmitLabel(FiniPtr);
     Streamer.EmitSymbolAttribute(FiniPtr, MCSymbolAttr::MCSA_Global);

@@ -53,9 +53,13 @@ cl::opt<bool> InstrumentationNoCountersClear(
     "instrumentation-no-counters-clear",
     cl::desc("Don't clear counters across dumps "
              "(use with instrumentation-sleep-time option)"),
-    cl::init(false),
-    cl::Optional,
-    cl::cat(BoltInstrCategory));
+    cl::init(false), cl::Optional, cl::cat(BoltInstrCategory));
+
+cl::opt<bool> InstrumentationWaitForks(
+    "instrumentation-wait-forks",
+    cl::desc("Wait until all forks of instrumented process will finish "
+             "(use with instrumentation-sleep-time option)"),
+    cl::init(false), cl::Optional, cl::cat(BoltInstrCategory));
 
 cl::opt<bool>
     InstrumentHotOnly("instrument-hot-only",
