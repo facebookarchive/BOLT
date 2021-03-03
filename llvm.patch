@@ -3512,7 +3512,7 @@ index ed79f4fec4e..95cb71fb867 100644
  set(sources
    X86AsmPrinter.cpp
 diff --git a/lib/Target/X86/Disassembler/X86Disassembler.cpp b/lib/Target/X86/Disassembler/X86Disassembler.cpp
-index c58254ae38c..ab9241e5530 100644
+index c58254ae38c..572395b4433 100644
 --- a/lib/Target/X86/Disassembler/X86Disassembler.cpp
 +++ b/lib/Target/X86/Disassembler/X86Disassembler.cpp
 @@ -247,6 +247,8 @@ MCDisassembler::DecodeStatus X86GenericDisassembler::getInstruction(
@@ -3524,6 +3524,22 @@ index c58254ae38c..ab9241e5530 100644
        }
        Instr.setFlags(Flags);
      }
+@@ -265,13 +267,10 @@ MCDisassembler::DecodeStatus X86GenericDisassembler::getInstruction(
+ /// @param reg        - The Reg to append.
+ static void translateRegister(MCInst &mcInst, Reg reg) {
+ #define ENTRY(x) X86::x,
+-  uint8_t llvmRegnums[] = {
+-    ALL_REGS
+-    0
+-  };
++  static constexpr MCPhysReg llvmRegnums[] = {ALL_REGS};
+ #undef ENTRY
+ 
+-  uint8_t llvmRegnum = llvmRegnums[reg];
++  MCPhysReg llvmRegnum = llvmRegnums[reg];
+   mcInst.addOperand(MCOperand::createReg(llvmRegnum));
+ }
+ 
 diff --git a/lib/Target/X86/Disassembler/X86DisassemblerDecoder.cpp b/lib/Target/X86/Disassembler/X86DisassemblerDecoder.cpp
 index 6a10278dc7f..626b1439871 100644
 --- a/lib/Target/X86/Disassembler/X86DisassemblerDecoder.cpp
