@@ -23,14 +23,18 @@ import configparser
 # read options from config file llvm-bolt-wrapper.ini in script CWD
 #
 # [config]
-# base_bolt = /full/path/to/llvm-bolt.real # mandatory
-# cmp_bolt = /full/path/to/other/llvm-bolt # mandatory
-# verbose 				   # optional, defaults to False
-# keep_tmp 				   # optional, defaults to False
-# no_minimize 				   # optional, defaults to False
-# run_sequentially 			   # optional, defaults to False
-# compare_output 			   # optional, defaults to False
-# timing_file = timing1.log 		   # optional, defaults to timing.log
+# # mandatory
+# base_bolt = /full/path/to/llvm-bolt.real
+# cmp_bolt = /full/path/to/other/llvm-bolt
+# # optional, default to False
+# verbose
+# keep_tmp
+# no_minimize
+# run_sequentially
+# compare_output
+# skip_binary_cmp
+# # optional, defaults to timing.log in CWD
+# timing_file = timing1.log
 
 cfg = configparser.ConfigParser(allow_no_value = True)
 cfgs = cfg.read("llvm-bolt-wrapper.ini")
@@ -56,6 +60,7 @@ KEEP_TMP = get_cfg('keep_tmp')
 NO_MINIMIZE = get_cfg('no_minimize')
 RUN_SEQUENTIALLY = get_cfg('run_sequentially')
 COMPARE_OUTPUT = get_cfg('compare_output')
+SKIP_BINARY_CMP = get_cfg('skip_binary_cmp')
 TIMING_FILE = cfg['config'].get('timing_file', 'timing.log')
 
 # perf2bolt mode
@@ -75,6 +80,8 @@ SKIP_MATCH = [
     'BOLT-INFO: BOLT version',
     '^Args: ',
     '^BOLT-DEBUG:',
+    'BOLT-INFO:.*data.*output data',
+    'WARNING: reading perf data directly',
 ]
 
 def run_cmd(cmd):
@@ -124,26 +131,26 @@ def write_to(txt, filename, mode='w'):
 def wait(proc):
     try:
         out, err = proc.communicate(timeout=9000)
-    except TimeoutExpired:
+    except subprocess.TimeoutExpired:
         proc.kill()
         out, err = proc.communicate()
     return out, err
 
-def compare_logs(main, cmp):
+def compare_logs(main, cmp, skip_end=0):
     '''
     Compares logs but allows for certain lines to be excluded from comparison.
     Returns None on success, mismatch otherwise.
     '''
-    for main_line, cmp_line in zip(main.splitlines(), cmp.splitlines()):
-        if main_line != cmp_line:
+    for lhs, rhs in list(zip(main.splitlines(), cmp.splitlines()))[:-skip_end]:
+        if lhs != rhs:
             # check skip patterns
             for skip in SKIP_MATCH:
                 # both lines must contain the pattern
-                if re.search(skip, main_line) and re.search(skip, cmp_line):
+                if re.search(skip, lhs) and re.search(skip, rhs):
                     break
             # otherwise return mismatching lines
             else:
-                return (main_line, cmp_line)
+                return (lhs, rhs)
     return None
 
 def fmt_cmp(cmp_tuple):
@@ -196,18 +203,18 @@ def main():
     args = prepend_dash(args)
 
     # run both BOLT binaries
-    main_bolt = run_bolt(BASE_BOLT, args + unknownargs)
+    main_bolt = run_bolt(BASE_BOLT, unknownargs + args)
     if RUN_SEQUENTIALLY:
         main_out, main_err = wait(main_bolt)
-        cmp_bolt = run_bolt(CMP_BOLT, cmp_args + unknownargs)
+        cmp_bolt = run_bolt(CMP_BOLT, unknownargs + cmp_args)
     else:
-        cmp_bolt = run_bolt(CMP_BOLT, cmp_args + unknownargs)
+        cmp_bolt = run_bolt(CMP_BOLT, unknownargs + cmp_args)
         main_out, main_err = wait(main_bolt)
     cmp_out, cmp_err  = wait(cmp_bolt)
 
     # compare logs
     out = compare_logs(main_out, cmp_out)
-    err = compare_logs(main_err, cmp_err)
+    err = compare_logs(main_err, cmp_err, skip_end=1) # skips the line with time
     if (main_bolt.returncode != cmp_bolt.returncode or
         (COMPARE_OUTPUT and (out or err))):
         print(tmp)
@@ -225,20 +232,26 @@ def main():
     # report binary timing as csv: output binary; base bolt real; cmp bolt real
     report_real_time(main_binary, main_err, cmp_err)
 
-    cmp_proc = subprocess.run(['cmp', main_binary, cmp_binary],
-                              capture_output=True, text=True)
-    if cmp_proc.returncode:
-        # check if ELF headers match
-        hdr = compare_headers(main_binary, cmp_binary)
-        if hdr:
-            print(fmt_cmp(hdr))
-            write_to(fmt_cmp(hdr), os.path.join(tmp, 'headers.txt'))
-            exit("headers mismatch")
-        # check which section has the first mismatch
-        mismatch_offset = parse_cmp_offset(cmp_proc.stdout)
-        print(mismatch_offset)
-        # since headers match, check which section this offset falls into
-        exit("binaries mismatch")
+    if not SKIP_BINARY_CMP:
+        cmp_proc = subprocess.run(['cmp', main_binary, cmp_binary],
+                                  capture_output=True, text=True)
+        if cmp_proc.returncode:
+            # check if output is an ELF file (magic bytes)
+            with open(main_binary, 'rb') as f:
+                magic = f.read(4)
+                if magic != b'\x7fELF':
+                    exit("output mismatch")
+            # check if ELF headers match
+            hdr = compare_headers(main_binary, cmp_binary)
+            if hdr:
+                print(fmt_cmp(hdr))
+                write_to(fmt_cmp(hdr), os.path.join(tmp, 'headers.txt'))
+                exit("headers mismatch")
+            # check which section has the first mismatch
+            mismatch_offset = parse_cmp_offset(cmp_proc.stdout)
+            print(mismatch_offset)
+            # since headers match, check which section this offset falls into
+            exit("binaries mismatch")
 
     # temp files are only cleaned on success
     if not KEEP_TMP:
