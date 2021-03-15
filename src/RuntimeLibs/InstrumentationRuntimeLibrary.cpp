@@ -11,6 +11,7 @@
 
 #include "InstrumentationRuntimeLibrary.h"
 #include "BinaryFunction.h"
+#include "JumpTable.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 
 using namespace llvm;
@@ -25,6 +26,7 @@ extern cl::opt<std::string> InstrumentationFilename;
 extern cl::opt<uint32_t> InstrumentationSleepTime;
 extern cl::opt<bool> InstrumentationNoCountersClear;
 extern cl::opt<bool> InstrumentationWaitForks;
+extern cl::opt<JumpTableSupportLevel> JumpTables;
 
 cl::opt<bool>
     Instrument("instrument",
@@ -44,6 +46,10 @@ void InstrumentationRuntimeLibrary::adjustCommandLineOptions(
     errs() << "BOLT-ERROR: instrumentation runtime libraries require "
               "relocations\n";
     exit(1);
+  }
+  if (opts::JumpTables != JTS_MOVE) {
+    opts::JumpTables = JTS_MOVE;
+    outs() << "BOLT-INFO: forcing -jump-tables=move for instrumentation\n";
   }
   if (!BC.StartFunctionAddress) {
     errs() << "BOLT-ERROR: instrumentation runtime libraries require a known "

@@ -62,8 +62,10 @@ MachORewriteInstance::MachORewriteInstance(object::MachOObjectFile *InputFile,
       BC(BinaryContext::createBinaryContext(
           InputFile, /* IsPIC */ true,
           DWARFContext::create(*InputFile, nullptr,
-                               DWARFContext::defaultErrorHandler, "",
-                               false))) {}
+                               DWARFContext::defaultErrorHandler, "", false))) {
+  if (opts::Instrument)
+    BC->setRuntimeLibrary(llvm::make_unique<InstrumentationRuntimeLibrary>());
+}
 
 Error MachORewriteInstance::setProfile(StringRef Filename) {
   if (!sys::fs::exists(Filename))
