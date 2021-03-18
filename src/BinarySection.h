@@ -13,6 +13,7 @@
 #define LLVM_TOOLS_LLVM_BOLT_BINARY_SECTION_H
 
 #include "Relocation.h"
+#include "DebugData.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/ADT/STLExtras.h"
@@ -23,6 +24,7 @@
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/raw_ostream.h"
+#include <memory>
 #include <set>
 #include <map>
 
@@ -70,6 +72,8 @@ class BinarySection {
       : Offset(Offset), Bytes(Bytes.begin(), Bytes.end()) {}
   };
   std::vector<BinaryPatch> Patches;
+  /// Patcher used to apply simple changes to sections of the input binary.
+  std::unique_ptr<BinaryPatcher> Patcher;
 
   // Output info
   bool IsFinalized{false};         // Has this section had output information
@@ -386,6 +390,16 @@ public:
   /// Add patch to the input contents of this section.
   void addPatch(uint64_t Offset, const SmallVectorImpl<char> &Bytes) {
     Patches.emplace_back(BinaryPatch(Offset, Bytes));
+  }
+
+  /// Register patcher for this section.
+  void registerPatcher(std::unique_ptr<BinaryPatcher> BPatcher) {
+    Patcher = std::move(BPatcher);
+  }
+
+  /// Returns the patcher
+  BinaryPatcher* getPatcher() {
+    return Patcher.get();
   }
 
   /// Lookup the relocation (if any) at the given /p Offset.

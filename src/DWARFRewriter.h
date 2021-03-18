@@ -29,10 +29,6 @@ class DWARFRewriter {
 
   BinaryContext &BC;
 
-  using SectionPatchersType = RewriteInstance::SectionPatchersType;
-
-  SectionPatchersType &SectionPatchers;
-
   SimpleBinaryPatcher *DebugInfoPatcher{nullptr};
 
   std::mutex DebugInfoPatcherMutex;
@@ -142,9 +138,8 @@ class DWARFRewriter {
   void flushPendingRanges();
 
 public:
-  DWARFRewriter(BinaryContext &BC,
-                SectionPatchersType &SectionPatchers)
-    : BC(BC), SectionPatchers(SectionPatchers) {}
+  DWARFRewriter(BinaryContext &BC)
+    : BC(BC) {}
 
   /// Main function for updating the DWARF debug info.
   void updateDebugInfo();

@@ -12,6 +12,7 @@
 #include "DWARFRewriter.h"
 #include "BinaryContext.h"
 #include "BinaryFunction.h"
+#include "DebugData.h"
 #include "ParallelUtilities.h"
 #include "Utils.h"
 #include "llvm/ADT/STLExtras.h"
@@ -36,6 +37,7 @@
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Timer.h"
 #include <algorithm>
+#include <llvm/Support/Error.h>
 
 #undef  DEBUG_TYPE
 #define DEBUG_TYPE "bolt"
@@ -67,14 +69,18 @@ DeterministicDebugInfo("deterministic-debuginfo",
 } // namespace opts
 
 void DWARFRewriter::updateDebugInfo() {
-  SectionPatchers[".debug_abbrev"] = llvm::make_unique<DebugAbbrevPatcher>();
-  SectionPatchers[".debug_info"] = llvm::make_unique<SimpleBinaryPatcher>();
-
-  DebugInfoPatcher =
-      static_cast<SimpleBinaryPatcher *>(SectionPatchers[".debug_info"].get());
-  AbbrevPatcher =
-      static_cast<DebugAbbrevPatcher *>(SectionPatchers[".debug_abbrev"].get());
-  assert(DebugInfoPatcher && AbbrevPatcher && "Patchers not initialized.");
+  auto DebugAbbrev = BC.getUniqueSectionByName(".debug_abbrev");
+  auto DebugInfo = BC.getUniqueSectionByName(".debug_info");
+  if (DebugAbbrev) {
+    DebugAbbrev->registerPatcher(std::make_unique<DebugAbbrevPatcher>());
+    AbbrevPatcher =
+        static_cast<DebugAbbrevPatcher *>(DebugAbbrev->getPatcher());
+  }
+  if (DebugInfo) {
+    DebugInfo->registerPatcher(std::make_unique<SimpleBinaryPatcher>());
+    DebugInfoPatcher =
+        static_cast<SimpleBinaryPatcher *>(DebugInfo->getPatcher());
+  }
 
   ARangesSectionWriter = llvm::make_unique<DebugARangesSectionWriter>();
   RangesSectionWriter = llvm::make_unique<DebugRangesSectionWriter>(&BC);
@@ -587,6 +593,8 @@ void DWARFRewriter::updateGdbIndexSection() {
 
 void
 DWARFRewriter::convertToRanges(const DWARFAbbreviationDeclaration *Abbrev) {
+  if (!AbbrevPatcher)
+    return;
   dwarf::Form HighPCForm = Abbrev->findAttribute(dwarf::DW_AT_high_pc)->Form;
   std::lock_guard<std::mutex> Lock(AbbrevPatcherMutex);
   AbbrevPatcher->addAttributePatch(Abbrev,
@@ -710,6 +718,8 @@ void getRangeAttrData(
 }
 
 void DWARFRewriter::patchLowHigh(DWARFDie DIE, DebugAddressRange Range) {
+  if (!DebugInfoPatcher)
+    return;
   uint32_t LowPCOffset, HighPCOffset;
   DWARFFormValue LowPCFormValue, HighPCFormValue;
   getRangeAttrData(
@@ -725,6 +735,8 @@ void DWARFRewriter::patchLowHigh(DWARFDie DIE, DebugAddressRange Range) {
 
 void DWARFRewriter::convertToRanges(DWARFDie DIE,
                                     uint64_t RangesSectionOffset) {
+  if (!DebugInfoPatcher)
+    return;
   uint32_t LowPCOffset, HighPCOffset;
   DWARFFormValue LowPCFormValue, HighPCFormValue;
   getRangeAttrData(
