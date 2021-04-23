@@ -282,8 +282,6 @@ public:
     return Header.getFormParams();
   }
   uint16_t getVersion() const { return Header.getVersion(); }
-  /// Size in bytes of the parsed unit header.
-  uint32_t getHeaderSize() const { return Header.getSize(); }
   uint8_t getAddressByteSize() const { return Header.getAddressByteSize(); }
   uint8_t getRefAddrByteSize() const { return Header.getRefAddrByteSize(); }
   uint8_t getDwarfOffsetByteSize() const {

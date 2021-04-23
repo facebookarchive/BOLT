@@ -1929,7 +1929,6 @@ public:
   const DWARFSection &getEHFrameSection() const override {
     return EHFrameSection;
   }
-  uint64_t getEHFrameAddress() const override { return EHFrameAddress; }
   const DWARFSection &getLineSection() const override { return LineSection; }
   StringRef getStrSection() const override { return StrSection; }
   const DWARFSection &getRangesSection() const override { return RangesSection; }
