@@ -1,0 +1,6 @@
+# This reproduces empty LSDA issue
+
+# RUN: yaml2obj %p/Inputs/eh_frame.yaml &> %t.exe
+# RUN: llvm-dwarfdump -debug-frame %t.exe | FileCheck %s
+
+CHECK: LSDA Address: 0000000000000000

@@ -1138,9 +1138,18 @@ Error DWARFDebugFrame::parse(DWARFDataExtractor Data,
 
           // Decode the LSDA if the CIE augmentation string said we should.
           if (Cie->getLSDAPointerEncoding() != DW_EH_PE_omit) {
+            auto CurPC = Offset + EHFrameAddress;
             LSDAAddress = Data.getEncodedPointer(
-                &Offset, Cie->getLSDAPointerEncoding(),
-                EHFrameAddress ? Offset + EHFrameAddress : 0);
+                &Offset, Cie->getLSDAPointerEncoding(), 0);
+
+            auto IsPCRelativeFn = [&]() {
+              return (0x70 & Cie->getLSDAPointerEncoding()) ==
+                     dwarf::DW_EH_PE_pcrel;
+            };
+
+            if (LSDAAddress && *LSDAAddress != 0 && IsPCRelativeFn())
+              LSDAAddress = *LSDAAddress + CurPC;
+
             if (RefHandler)
               RefHandler(*LSDAAddress, Offset, Cie->getLSDAPointerEncoding());
           }
