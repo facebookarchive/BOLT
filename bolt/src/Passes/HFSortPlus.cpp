@@ -22,7 +22,6 @@
 // page. The following algorithm detects short and long calls, and optimizes
 // the expected number of cache misses for the long ones.
 
-#include "BinaryFunction.h"
 #include "HFSort.h"
 #include "llvm/Support/CommandLine.h"
 
