@@ -3344,7 +3344,7 @@ public:
     };
 
     for (unsigned int i = 0; i < Targets.size(); ++i) {
-      Results.push_back(std::make_pair(NextTarget, std::vector<MCInst>()));
+      Results.emplace_back(NextTarget, std::vector<MCInst>());
       std::vector<MCInst>* NewCall = &Results.back().second;
 
       if (MinimizeCodeSize && !LoadElim) {
@@ -3470,8 +3470,8 @@ public:
         Jne.addOperand(MCOperand::createImm(X86::COND_NE));
 
         // Call specific target directly.
-        Results.push_back(std::make_pair(Ctx->createNamedTempSymbol(),
-                                         std::vector<MCInst>()));
+        Results.emplace_back(Ctx->createNamedTempSymbol(),
+                             std::vector<MCInst>());
         NewCall = &Results.back().second;
         NewCall->push_back(CallInst);
         MCInst &CallOrJmp = NewCall->back();
@@ -3518,7 +3518,7 @@ public:
     }
 
     // Cold call block.
-    Results.push_back(std::make_pair(NextTarget, std::vector<MCInst>()));
+    Results.emplace_back(NextTarget, std::vector<MCInst>());
     std::vector<MCInst> &NewCall = Results.back().second;
     for (const MCInst *Inst : MethodFetchInsns) {
       if (Inst != &CallInst)
@@ -3531,7 +3531,7 @@ public:
       jumpToMergeBlock(NewCall);
 
       // Record merge block
-      Results.push_back(std::make_pair(MergeBlock, std::vector<MCInst>()));
+      Results.emplace_back(MergeBlock, std::vector<MCInst>());
     }
 
     return Results;
@@ -3554,7 +3554,7 @@ public:
     MCSymbol* NextTarget = nullptr;
 
     for (unsigned int i = 0; i < Targets.size(); ++i) {
-      Results.push_back(std::make_pair(NextTarget, std::vector<MCInst>()));
+      Results.emplace_back(NextTarget, std::vector<MCInst>());
       std::vector<MCInst>* CurBB = &Results.back().second;
 
       // Compare current index to a specific index.
@@ -3588,7 +3588,7 @@ public:
     }
 
     // Cold call block.
-    Results.push_back(std::make_pair(NextTarget, std::vector<MCInst>()));
+    Results.emplace_back(NextTarget, std::vector<MCInst>());
     std::vector<MCInst> &CurBB = Results.back().second;
     for (const MCInst *Inst : TargetFetchInsns) {
       if (Inst != &IJmpInst)
