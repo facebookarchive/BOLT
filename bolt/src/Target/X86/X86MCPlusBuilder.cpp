@@ -1650,7 +1650,7 @@ public:
     int MemOpNo = getMemoryOperandNo(Inst);
     const MCInstrDesc &MCII = Info->get(Inst.getOpcode());
     const unsigned NumDefs = MCII.getNumDefs();
-    static BitVector SPBPAliases(BitVector(getAliases(X86::RSP)) |
+    static BitVector SPBPAliases(BitVector(getAliases(X86::RSP)) |=
                                  getAliases(X86::RBP));
     static BitVector SPAliases(getAliases(X86::RSP));
 
