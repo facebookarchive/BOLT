@@ -2420,7 +2420,8 @@ void RewriteInstance::readRelocations(const SectionRef &Section) {
                                                   /*CreatePastEnd =*/ true);
             ReferencedBF->registerReferencedOffset(RefFunctionOffset);
           }
-          if (opts::Verbosity > 1 && !RelocatedSection.isReadOnly()) {
+          if (opts::Verbosity > 1 &&
+              !BinarySection(*BC, RelocatedSection).isReadOnly()) {
             dbgs() << "BOLT-WARNING: writable reference into the middle of "
                    << "the function " << *ReferencedBF
                    << " detected at address 0x"

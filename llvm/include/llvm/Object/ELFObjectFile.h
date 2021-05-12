@@ -287,7 +287,6 @@ protected:
   bool isSectionData(DataRefImpl Sec) const override;
   bool isSectionBSS(DataRefImpl Sec) const override;
   bool isSectionVirtual(DataRefImpl Sec) const override;
-  bool isSectionReadOnly(DataRefImpl Sec) const override;
   bool isBerkeleyText(DataRefImpl Sec) const override;
   bool isBerkeleyData(DataRefImpl Sec) const override;
   bool isDebugSection(StringRef SectionName) const override;
@@ -932,14 +931,6 @@ template <class ELFT>
 bool ELFObjectFile<ELFT>::isDebugSection(StringRef SectionName) const {
   return SectionName.startswith(".debug") ||
          SectionName.startswith(".zdebug") || SectionName == ".gdb_index";
-}
-
-template <class ELFT>
-bool ELFObjectFile<ELFT>::isSectionReadOnly(DataRefImpl Sec) const {
-  const Elf_Shdr *EShdr = getSection(Sec);
-  return EShdr->sh_flags & ELF::SHF_ALLOC &&
-         !(EShdr->sh_flags & ELF::SHF_WRITE) &&
-         EShdr->sh_type == ELF::SHT_PROGBITS;
 }
 
 template <class ELFT>
