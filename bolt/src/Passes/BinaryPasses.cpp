@@ -1270,12 +1270,12 @@ void PrintProfileStats::runOnFunctions(BinaryContext &BC) {
 
 void
 PrintProgramStats::runOnFunctions(BinaryContext &BC) {
-  uint64_t NumRegularFunctions{0};
-  uint64_t NumStaleProfileFunctions{0};
-  uint64_t NumNonSimpleProfiledFunctions{0};
-  uint64_t NumUnknownControlFlowFunctions{0};
-  uint64_t TotalSampleCount{0};
-  uint64_t StaleSampleCount{0};
+  uint64_t NumRegularFunctions = 0;
+  uint64_t NumStaleProfileFunctions = 0;
+  uint64_t NumNonSimpleProfiledFunctions = 0;
+  uint64_t NumUnknownControlFlowFunctions = 0;
+  uint64_t TotalSampleCount = 0;
+  uint64_t StaleSampleCount = 0;
   std::vector<BinaryFunction *> ProfiledFunctions;
   const char *StaleFuncsHeader = "BOLT-INFO: Functions with stale profile:\n";
   for (auto &BFI : BC.getBinaryFunctions()) {
@@ -1717,7 +1717,7 @@ void SpecializeMemcpy1::runOnFunctions(BinaryContext &BC) {
 
         BinaryBasicBlock *OneByteMemcpyBB = CurBB->splitAt(II);
 
-        BinaryBasicBlock *NextBB{nullptr};
+        BinaryBasicBlock *NextBB = nullptr;
         if (OneByteMemcpyBB->getNumNonPseudos() > 1) {
           NextBB = OneByteMemcpyBB->splitAt(OneByteMemcpyBB->begin());
           NextBB->eraseInstruction(NextBB->begin());
