@@ -497,7 +497,7 @@ void BinaryFunction::print(raw_ostream &OS, std::string Annotation,
     return;
 
   // Offset of the instruction in function.
-  uint64_t Offset{0};
+  uint64_t Offset = 0;
 
   if (BasicBlocks.empty() && !Instructions.empty()) {
     // Print before CFG was built.
@@ -971,7 +971,7 @@ bool BinaryFunction::disassemble() {
 
   auto handlePCRelOperand =
       [&](MCInst &Instruction, uint64_t Address, uint64_t Size) {
-    uint64_t TargetAddress{0};
+    uint64_t TargetAddress = 0;
     if (!MIB->evaluateMemOperandTarget(Instruction, TargetAddress, Address,
                                        Size)) {
       errs() << "BOLT-ERROR: PC-relative operand can't be evaluated:\n";
@@ -1011,7 +1011,7 @@ bool BinaryFunction::disassemble() {
   auto fixStubTarget = [&](MCInst &LoadLowBits, MCInst &LoadHiBits,
                            uint64_t Target) {
     const MCSymbol *TargetSymbol;
-    uint64_t Addend{0};
+    uint64_t Addend = 0;
     std::tie(TargetSymbol, Addend) = BC.handleAddressRef(Target, *this, true);
 
     int64_t Val;
@@ -1091,7 +1091,7 @@ bool BinaryFunction::disassemble() {
     }
 
     // Check if there's a relocation associated with this instruction.
-    bool UsedReloc{false};
+    bool UsedReloc = false;
     for (auto Itr = Relocations.lower_bound(Offset),
          ItrE = Relocations.lower_bound(Offset + Size); Itr != ItrE; ++Itr) {
       const Relocation &Relocation = Itr->second;
@@ -1276,7 +1276,7 @@ bool BinaryFunction::disassemble() {
         // Could not evaluate branch. Should be an indirect call or an
         // indirect branch. Bail out on the latter case.
         if (MIB->isIndirectBranch(Instruction)) {
-          uint64_t IndirectTarget{0};
+          uint64_t IndirectTarget = 0;
           IndirectBranchType Result =
               processIndirectBranch(Instruction, Size, Offset, IndirectTarget);
           switch (Result) {
@@ -1752,10 +1752,10 @@ bool BinaryFunction::postProcessIndirectBranches(
     }
   };
 
-  uint64_t NumIndirectJumps{0};
+  uint64_t NumIndirectJumps = 0;
   MCInst *LastIndirectJump = nullptr;
-  BinaryBasicBlock *LastIndirectJumpBB{nullptr};
-  uint64_t LastJT{0};
+  BinaryBasicBlock *LastIndirectJumpBB = nullptr;
+  uint64_t LastJT = 0;
   uint16_t LastJTIndexReg = BC.MIB->getNoRegister();
   for (BinaryBasicBlock *BB : layout()) {
     for (MCInst &Instr : *BB) {
@@ -1945,10 +1945,10 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
   // Created basic blocks are sorted in layout order since they are
   // created in the same order as instructions, and instructions are
   // sorted by offsets.
-  BinaryBasicBlock *InsertBB{nullptr};
-  BinaryBasicBlock *PrevBB{nullptr};
-  bool IsLastInstrNop{false};
-  uint64_t LastInstrOffset{0};
+  BinaryBasicBlock *InsertBB = nullptr;
+  BinaryBasicBlock *PrevBB = nullptr;
+  bool IsLastInstrNop = false;
+  uint64_t LastInstrOffset = 0;
 
   auto addCFIPlaceholders =
       [this](uint64_t CFIOffset, BinaryBasicBlock *InsertBB) {
@@ -3825,7 +3825,7 @@ void BinaryFunction::disambiguateJumpTables(
         }
       }
 
-      uint64_t NewJumpTableID{0};
+      uint64_t NewJumpTableID = 0;
       const MCSymbol *NewJTLabel;
       std::tie(NewJumpTableID, NewJTLabel) =
           BC.duplicateJumpTable(*this, JT, Target);
@@ -3880,8 +3880,8 @@ BinaryBasicBlock *BinaryFunction::splitEdge(BinaryBasicBlock *From,
     ++BI;
   }
   assert(I != From->succ_end() && "Invalid CFG edge in splitEdge!");
-  uint64_t OrigCount{BI->Count};
-  uint64_t OrigMispreds{BI->MispredictedCount};
+  uint64_t OrigCount = BI->Count;
+  uint64_t OrigMispreds = BI->MispredictedCount;
   replaceJumpTableEntryIn(From, To, NewBBPtr);
   From->replaceSuccessor(To, NewBBPtr, OrigCount, OrigMispreds);
 
