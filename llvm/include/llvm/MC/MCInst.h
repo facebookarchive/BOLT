@@ -212,10 +212,8 @@ public:
   using const_iterator = SmallVectorImpl<MCOperand>::const_iterator;
 
   void clear() { Operands.clear(); }
-  iterator erase(iterator I) { return Operands.erase(I); }
-  iterator erase(iterator First, iterator Last) {
-    return Operands.erase(First, Last);
-  }
+  void erase(iterator I) { Operands.erase(I); }
+  void erase(iterator First, iterator Last) { Operands.erase(First, Last); }
   size_t size() const { return Operands.size(); }
   iterator begin() { return Operands.begin(); }
   const_iterator begin() const { return Operands.begin(); }

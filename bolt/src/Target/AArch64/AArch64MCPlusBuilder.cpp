@@ -305,8 +305,7 @@ public:
       }
       assert(OI != Inst.end() && "Literal operand not found");
     }
-    OI = Inst.erase(OI);
-    Inst.insert(OI, Operand);
+    *OI = Operand;
     return true;
   }
 
@@ -421,9 +420,8 @@ public:
       OI = Inst.begin() + 2;
     }
 
-    OI = Inst.erase(OI);
-    Inst.insert(OI, MCOperand::createExpr(MCSymbolRefExpr::create(
-                        TBB, MCSymbolRefExpr::VK_None, *Ctx)));
+    *OI = MCOperand::createExpr(
+        MCSymbolRefExpr::create(TBB, MCSymbolRefExpr::VK_None, *Ctx));
     return true;
   }
 

@@ -1053,8 +1053,7 @@ public:
     MCOperand *OI = getMemOperandDisp(Inst);
     if (OI == Inst.end())
       return false;
-    OI = Inst.erase(OI);
-    Inst.insert(OI, Operand);
+    *OI = Operand;
     return true;
   }
 
