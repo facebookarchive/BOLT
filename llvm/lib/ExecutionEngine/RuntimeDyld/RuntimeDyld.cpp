@@ -421,8 +421,6 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
     }
   }
 
-  // FIXME(rebase): recerted D55943
-#if 0
   // Process remaining sections
   if (ProcessAllSections) {
     LLVM_DEBUG(dbgs() << "Process remaining sections:\n");
@@ -441,7 +439,6 @@ RuntimeDyldImpl::loadObjectImpl(const object::ObjectFile &Obj) {
         return SectionIDOrErr.takeError();
     }
   }
-#endif
 
   // Give the subclasses a chance to tie-up any loose ends.
   if (auto Err = finalizeLoad(Obj, LocalSections))
