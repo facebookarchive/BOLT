@@ -147,6 +147,7 @@ static void printBoltRevision(llvm::raw_ostream &OS) {
 
 void perf2boltMode(int argc, char **argv) {
   cl::HideUnrelatedOptions(makeArrayRef(opts::Perf2BoltCategories));
+  cl::AddExtraVersionPrinter(printBoltRevision);
   cl::ParseCommandLineOptions(
       argc, argv,
       "perf2bolt - BOLT data aggregator\n"
@@ -203,6 +204,7 @@ void heatmapMode(int argc, char **argv) {
 
 void boltDiffMode(int argc, char **argv) {
   cl::HideUnrelatedOptions(makeArrayRef(opts::BoltDiffCategories));
+  cl::AddExtraVersionPrinter(printBoltRevision);
   cl::ParseCommandLineOptions(
       argc, argv,
       "llvm-boltdiff - BOLT binary diff tool\n"
