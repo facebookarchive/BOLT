@@ -2,9 +2,10 @@
 
 # RUN: mkdir -p %t.dir && cd %t.dir
 # RUN: cp %S/Inputs/debug-fission-simple.s debug-fission-simple.s
+# RUN: cp %S/Inputs/debug-fission-script.txt debug-fission-script.txt
 # RUN: llvm-mc -g -filetype=obj -triple x86_64-unknown-unknown --split-dwarf-file=debug-fission-simple.dwo \
 # RUN:   ./debug-fission-simple.s -o ./debug-fission-simple.o
-# RUN: %host_cxx -g -Wl,--gc-sections,-q,-nostdlib -Wl,--undefined=_Z6_startv -nostartfiles ./debug-fission-simple.o -o out.exe
+# RUN: %host_cxx %cxxflags -g -Wl,--gc-sections,-q,-nostdlib -Wl,--undefined=_Z6_startv -nostartfiles -Wl,--script=debug-fission-script.txt ./debug-fission-simple.o -o out.exe
 # RUN: llvm-bolt out.exe --reorder-blocks=reverse -update-debug-sections -dwo-output-path=%t.dir -o out.bolt
 # RUN: llvm-dwarfdump --show-form --verbose --debug-info %t.dir/debug-fission-simple.dwo0.dwo | grep DW_FORM_GNU_addr_index | FileCheck %s --check-prefix=CHECK-ADDR-INDEX
 # RUN: llvm-dwarfdump --show-form --verbose --debug-addr out.bolt | FileCheck %s --check-prefix=CHECK-ADDR-SEC
