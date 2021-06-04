@@ -4,7 +4,7 @@
 # RUN: cp %S/Inputs/debug-fission-simple.s debug-fission-simple.s
 # RUN: llvm-mc -g -filetype=obj -triple x86_64-unknown-unknown --split-dwarf-file=debug-fission-simple.dwo \
 # RUN:   ./debug-fission-simple.s -o ./debug-fission-simple.o
-# RUN: %host_cxx -g -Wl,--gc-sections,-q,-nostdlib -Wl,--undefined=_Z6_startv -nostartfiles ./debug-fission-simple.o -o out.exe
+# RUN: %host_cxx %cxxflags -g -Wl,--gc-sections,-q,-nostdlib -Wl,--undefined=_Z6_startv -nostartfiles ./debug-fission-simple.o -o out.exe
 # RUN: llvm-bolt out.exe --reorder-blocks=reverse -update-debug-sections -dwo-output-path=%t.dir -o out.bolt
 # RUN: llvm-dwarfdump --show-form --verbose --debug-info %t.dir/debug-fission-simple.dwo0.dwo | grep DW_FORM_GNU_addr_index | FileCheck %s --check-prefix=CHECK-ADDR-INDEX
 # RUN: llvm-dwarfdump --show-form --verbose --debug-addr out.bolt | FileCheck %s --check-prefix=CHECK-ADDR-SEC
@@ -15,10 +15,10 @@
 
 # CHECK-ADDR-SEC: .debug_addr contents:
 # CHECK-ADDR-SEC: 0x00000000: Addrs: [
-# CHECK-ADDR-SEC: 0x0000000000601000
-# CHECK-ADDR-SEC: 0x0000000000a00000
+# CHECK-ADDR-SEC: 0x0000000000404000
+# CHECK-ADDR-SEC: 0x0000000000800000
 # CHECK-ADDR-SEC: 0x0000000000000000
-# CHECK-ADDR-SEC: 0x0000000000a00040
+# CHECK-ADDR-SEC: 0x0000000000800040
 
 //clang++ -ffunction-sections -fno-exceptions -g -gsplit-dwarf=split -S debug-fission-simple.cpp -o debug-fission-simple.s
 static int foo = 2;
