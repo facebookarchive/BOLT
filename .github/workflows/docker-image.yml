@@ -13,4 +13,4 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Build the Docker image and test
-      run: docker build . --file Dockerfile --tag ubuntu-bolt:$(date +%s)
+      run: docker build . --file .github/workflows/Dockerfile --tag ubuntu-bolt:$(date +%s)
