@@ -672,6 +672,10 @@ SMLoc BinaryEmitter::emitLineInfo(const BinaryFunction &BF, SMLoc NewLoc,
 }
 
 void BinaryEmitter::emitJumpTables(const BinaryFunction &BF) {
+  MCSection *ReadOnlySection = BC.MOFI->getReadOnlySection();
+  MCSection *ReadOnlyColdSection = BC.MOFI->getContext().getELFSection(
+      ".rodata.cold", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
+
   if (!BF.hasJumpTables())
     return;
 
@@ -702,11 +706,10 @@ void BinaryEmitter::emitJumpTables(const BinaryFunction &BF) {
         ColdSection = HotSection;
       } else {
         if (BF.isSimple()) {
-          HotSection = BC.MOFI->getReadOnlySection();
-          ColdSection = BC.MOFI->getReadOnlyColdSection();
+          HotSection = ReadOnlySection;
+          ColdSection = ReadOnlyColdSection;
         } else {
-          HotSection = BF.hasProfile() ? BC.MOFI->getReadOnlySection()
-                                       : BC.MOFI->getReadOnlyColdSection();
+          HotSection = BF.hasProfile() ? ReadOnlySection : ReadOnlyColdSection;
           ColdSection = HotSection;
         }
       }
