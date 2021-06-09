@@ -16,7 +16,6 @@
 #include "llvm/DebugInfo/DWARF/DWARFDataExtractor.h"
 #include "llvm/DebugInfo/DWARF/DWARFExpression.h"
 #include "llvm/Support/Error.h"
-#include <functional>
 #include <map>
 #include <memory>
 #include <vector>
@@ -686,11 +685,6 @@ public:
   iterator_range<iterator> entries() const {
     return iterator_range<iterator>(Entries.begin(), Entries.end());
   }
-
-  using FDEFunction = std::function<void(const dwarf::FDE *)>;
-
-  /// Call function F for every FDE in the frame.
-  void for_each_FDE(FDEFunction F) const;
 
   uint64_t getEHFrameAddress() const { return EHFrameAddress; }
 };

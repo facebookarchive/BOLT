@@ -1183,13 +1183,6 @@ FrameEntry *DWARFDebugFrame::getEntryAtOffset(uint64_t Offset) const {
   return nullptr;
 }
 
-void DWARFDebugFrame::for_each_FDE(FDEFunction F) const {
-  for (const auto &Entry : Entries) {
-    if (const auto *FDE = dyn_cast<dwarf::FDE>(Entry.get()))
-      F(FDE);
-  }
-}
-
 void DWARFDebugFrame::dump(raw_ostream &OS, DIDumpOptions DumpOpts,
                            const MCRegisterInfo *MRI,
                            Optional<uint64_t> Offset) const {

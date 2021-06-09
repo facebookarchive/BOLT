@@ -689,14 +689,17 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
   std::sort(FailedAddresses.begin(), FailedAddresses.end());
 
   // Initialize PCToFDE using NewEHFrame.
-  NewEHFrame.for_each_FDE([&](const dwarf::FDE *FDE) {
+  for (dwarf::FrameEntry &Entry : NewEHFrame.entries()) {
+    const dwarf::FDE *FDE = dyn_cast<dwarf::FDE>(&Entry);
+    if (FDE == nullptr)
+      continue;
     const uint64_t FuncAddress = FDE->getInitialLocation();
     const uint64_t FDEAddress =
         NewEHFrame.getEHFrameAddress() + FDE->getOffset();
 
     // Ignore unused FDEs.
     if (FuncAddress == 0)
-      return;
+      continue;
 
     // Add the address to the map unless we failed to write it.
     if (!std::binary_search(FailedAddresses.begin(), FailedAddresses.end(),
@@ -706,7 +709,7 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
                         << Twine::utohexstr(FDEAddress) << '\n');
       PCToFDE[FuncAddress] = FDEAddress;
     }
-  });
+  };
 
   LLVM_DEBUG(dbgs() << "BOLT-DEBUG: new .eh_frame contains "
                     << std::distance(NewEHFrame.entries().begin(),
@@ -715,7 +718,10 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
 
   // Add entries from the original .eh_frame corresponding to the functions
   // that we did not update.
-  OldEHFrame.for_each_FDE([&](const dwarf::FDE *FDE) {
+  for (const dwarf::FrameEntry &Entry : OldEHFrame) {
+    const dwarf::FDE *FDE = dyn_cast<dwarf::FDE>(&Entry);
+    if (FDE == nullptr)
+      continue;
     const uint64_t FuncAddress = FDE->getInitialLocation();
     const uint64_t FDEAddress =
         OldEHFrame.getEHFrameAddress() + FDE->getOffset();
@@ -727,7 +733,7 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
                         << Twine::utohexstr(FDEAddress) << '\n');
       PCToFDE[FuncAddress] = FDEAddress;
     }
-  });
+  };
 
   LLVM_DEBUG(dbgs() << "BOLT-DEBUG: old .eh_frame contains "
                     << std::distance(OldEHFrame.entries().begin(),
