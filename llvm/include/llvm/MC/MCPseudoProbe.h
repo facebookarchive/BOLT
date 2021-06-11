@@ -373,6 +373,9 @@ public:
   // Print pseudo_probe section info, used along with show-disassembly
   void printProbeForAddress(raw_ostream &OS, uint64_t Address);
 
+  // do printProbeForAddress for all addresses
+  void printProbesForAllAddresses(raw_ostream &OS);
+
   // Look up the probe of a call for the input address
   const MCDecodedPseudoProbe *getCallProbeForAddr(uint64_t Address) const;
 
