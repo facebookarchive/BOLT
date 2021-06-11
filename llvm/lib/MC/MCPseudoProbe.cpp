@@ -519,6 +519,19 @@ void MCPseudoProbeDecoder::printProbeForAddress(raw_ostream &OS,
   }
 }
 
+void MCPseudoProbeDecoder::printProbesForAllAddresses(raw_ostream &OS) {
+  std::vector<uint64_t> Addresses;
+  for (auto Entry : Address2ProbesMap)
+    Addresses.push_back(Entry.first);
+  std::sort(Addresses.begin(), Addresses.end());
+  for (auto K : Addresses) {
+    OS << "Address:\t";
+    OS << K;
+    OS << "\n";
+    printProbeForAddress(OS, K);
+  }
+}
+
 const MCDecodedPseudoProbe *
 MCPseudoProbeDecoder::getCallProbeForAddr(uint64_t Address) const {
   auto It = Address2ProbesMap.find(Address);
