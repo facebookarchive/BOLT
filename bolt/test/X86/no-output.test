@@ -15,7 +15,7 @@
   .type main, %function
   .p2align  4
 main:
-# FDATA: 0 [unknown] 0 1 main 0 0 510
+# FDATA: 0 "[unknown]" 0 1 "main" 0 0 510
   pushq %rbp
   movq  %rsp, %rbp
   subq  $0x18, %rsp

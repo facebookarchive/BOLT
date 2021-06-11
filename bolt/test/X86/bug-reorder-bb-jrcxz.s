@@ -35,37 +35,37 @@ main:
 .align 32
 bn_sqrx8x_internal:
 __bn_sqrx8x_internal:
-# FDATA: 1 bn_from_mont8x 160 1 bn_sqrx8x_internal 0 0 56
-# FDATA: 1 bn_sqrx8x_internal 13 1  bn_sqrx8x_internal 40 0 60972
-# FDATA: 1 bn_sqrx8x_internal 5f 1  bn_sqrx8x_internal 2c 0 60972
-# FDATA: 1 bn_sqrx8x_internal 2f1 1 bn_sqrx8x_internal 500 0 60972
-# FDATA: 1 bn_sqrx8x_internal 34a 1 bn_sqrx8x_internal 360 0 60972
-# FDATA: 1 bn_sqrx8x_internal 411 1 bn_sqrx8x_internal 360 0 447888
-# FDATA: 1 bn_sqrx8x_internal 411 1 bn_sqrx8x_internal 417 0 63984
-# FDATA: 1 bn_sqrx8x_internal 427 1 bn_sqrx8x_internal 480 0 60972
-# FDATA: 1 bn_sqrx8x_internal 427 1 bn_sqrx8x_internal 429 0 3012
-# FDATA: 1 bn_sqrx8x_internal 467 1 bn_sqrx8x_internal 360 0 3012
-# FDATA: 1 bn_sqrx8x_internal 4ba 1 bn_sqrx8x_internal 80 0 58964
-# FDATA: 1 bn_sqrx8x_internal 4ba 1 bn_sqrx8x_internal 4c0 0 2008
-# FDATA: 1 bn_sqrx8x_internal 4fb 1 bn_sqrx8x_internal 80 0 2008
-# FDATA: 1 bn_sqrx8x_internal 5f0 1 bn_sqrx8x_internal 5f2 0 180908
-# FDATA: 1 bn_sqrx8x_internal 61b 1 bn_sqrx8x_internal 540 0 180908
-# FDATA: 1 bn_sqrx8x_internal 632 1 bn_sqrx8x_internal 637 0 59020
-# FDATA: 1 bn_sqrx8x_internal 657 1 bn_sqrx8x_internal 660 0 59020
-# FDATA: 1 bn_sqrx8x_internal 696 1 bn_sqrx8x_internal 6a0 0 120048
-# FDATA: 1 bn_sqrx8x_internal 75a 1 bn_sqrx8x_internal 6a0 0 840336
-# FDATA: 1 bn_sqrx8x_internal 75a 1 bn_sqrx8x_internal 760 0 120048
-# FDATA: 1 bn_sqrx8x_internal 768 1 bn_sqrx8x_internal 76e 0 120048
-# FDATA: 1 bn_sqrx8x_internal 7b2 1 bn_sqrx8x_internal 7c0 0 120048
-# FDATA: 1 bn_sqrx8x_internal 86e 1 bn_sqrx8x_internal 7c0 0 896560
-# FDATA: 1 bn_sqrx8x_internal 86e 1 bn_sqrx8x_internal 874 0 128080
-# FDATA: 1 bn_sqrx8x_internal 879 1 bn_sqrx8x_internal 8c0 0 120048
-# FDATA: 1 bn_sqrx8x_internal 879 1 bn_sqrx8x_internal 87b 0 8032
-# FDATA: 1 bn_sqrx8x_internal 8bb 1 bn_sqrx8x_internal 7c0 0 8032
-# FDATA: 1 bn_sqrx8x_internal 8e8 1 bn_sqrx8x_internal 8ed 0 120048
-# FDATA: 1 bn_sqrx8x_internal 955 1 bn_sqrx8x_internal 660 0 61028
-# FDATA: 1 bn_sqrx8x_internal 955 1 bn_sqrx8x_internal 95b 0 59020
-# FDATA: 0 [unknown] 0 1 bn_sqrx8x_internal 5f0 0 59020
+# FDATA: 1 "bn_from_mont8x" 160 1 "bn_sqrx8x_internal" 0 0 56
+# FDATA: 1 "bn_sqrx8x_internal" 13 1 " bn_sqrx8x_internal" 40 0 60972
+# FDATA: 1 "bn_sqrx8x_internal" 5f 1 " bn_sqrx8x_internal" 2c 0 60972
+# FDATA: 1 "bn_sqrx8x_internal" 2f1 1 "bn_sqrx8x_internal" 500 0 60972
+# FDATA: 1 "bn_sqrx8x_internal" 34a 1 "bn_sqrx8x_internal" 360 0 60972
+# FDATA: 1 "bn_sqrx8x_internal" 411 1 "bn_sqrx8x_internal" 360 0 447888
+# FDATA: 1 "bn_sqrx8x_internal" 411 1 "bn_sqrx8x_internal" 417 0 63984
+# FDATA: 1 "bn_sqrx8x_internal" 427 1 "bn_sqrx8x_internal" 480 0 60972
+# FDATA: 1 "bn_sqrx8x_internal" 427 1 "bn_sqrx8x_internal" 429 0 3012
+# FDATA: 1 "bn_sqrx8x_internal" 467 1 "bn_sqrx8x_internal" 360 0 3012
+# FDATA: 1 "bn_sqrx8x_internal" 4ba 1 "bn_sqrx8x_internal" 80 0 58964
+# FDATA: 1 "bn_sqrx8x_internal" 4ba 1 "bn_sqrx8x_internal" 4c0 0 2008
+# FDATA: 1 "bn_sqrx8x_internal" 4fb 1 "bn_sqrx8x_internal" 80 0 2008
+# FDATA: 1 "bn_sqrx8x_internal" 5f0 1 "bn_sqrx8x_internal" 5f2 0 180908
+# FDATA: 1 "bn_sqrx8x_internal" 61b 1 "bn_sqrx8x_internal" 540 0 180908
+# FDATA: 1 "bn_sqrx8x_internal" 632 1 "bn_sqrx8x_internal" 637 0 59020
+# FDATA: 1 "bn_sqrx8x_internal" 657 1 "bn_sqrx8x_internal" 660 0 59020
+# FDATA: 1 "bn_sqrx8x_internal" 696 1 "bn_sqrx8x_internal" 6a0 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 75a 1 "bn_sqrx8x_internal" 6a0 0 840336
+# FDATA: 1 "bn_sqrx8x_internal" 75a 1 "bn_sqrx8x_internal" 760 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 768 1 "bn_sqrx8x_internal" 76e 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 7b2 1 "bn_sqrx8x_internal" 7c0 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 86e 1 "bn_sqrx8x_internal" 7c0 0 896560
+# FDATA: 1 "bn_sqrx8x_internal" 86e 1 "bn_sqrx8x_internal" 874 0 128080
+# FDATA: 1 "bn_sqrx8x_internal" 879 1 "bn_sqrx8x_internal" 8c0 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 879 1 "bn_sqrx8x_internal" 87b 0 8032
+# FDATA: 1 "bn_sqrx8x_internal" 8bb 1 "bn_sqrx8x_internal" 7c0 0 8032
+# FDATA: 1 "bn_sqrx8x_internal" 8e8 1 "bn_sqrx8x_internal" 8ed 0 120048
+# FDATA: 1 "bn_sqrx8x_internal" 955 1 "bn_sqrx8x_internal" 660 0 61028
+# FDATA: 1 "bn_sqrx8x_internal" 955 1 "bn_sqrx8x_internal" 95b 0 59020
+# FDATA: 0 "[unknown]" 0 1 "bn_sqrx8x_internal" 5f0 0 59020
 .cfi_startproc
   leaq 48+8(%rsp),%rdi
   leaq (%rsi,%r9,1),%rbp

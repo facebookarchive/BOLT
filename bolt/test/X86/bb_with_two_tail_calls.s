@@ -19,7 +19,7 @@
 _start:
     ja a
 b:  jb c
-# FDATA: 1 _start #b# 1 _start #c# 2 4
+# FDATA: 1 "_start" #b# 1 "_start" #c# 2 4
     jmp e
 a:  nop
 c:  jmp e

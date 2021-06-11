@@ -23,11 +23,11 @@
   .globl _start
 _start:
     .cfi_startproc
-# FDATA: 0 [unknown] 0 1 _start 0 0 6
+# FDATA: 0 "[unknown]" 0 1 "_start" 0 0 6
 # !CFI OpOffset for reg3/rbx is inserted into this block.
     je	a
 b:  jne _start
-# FDATA: 1 _start #b# 1 _start #c# 0 3
+# FDATA: 1 "_start" #b# 1 "_start" #c# 0 3
 
 c:
     push	%rbx

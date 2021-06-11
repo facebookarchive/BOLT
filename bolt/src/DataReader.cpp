@@ -831,6 +831,16 @@ void DataReader::reportError(StringRef ErrorMsg) {
        << Col << ": " << ErrorMsg << '\n';
 }
 
+bool DataReader::expectAndConsumeNS() {
+  if (ParsingBuf[0] != NameSeparator) {
+    reportError("expected name separator");
+    return false;
+  }
+  ParsingBuf = ParsingBuf.drop_front(1);
+  Col += 1;
+  return true;
+}
+
 bool DataReader::expectAndConsumeFS() {
   if (ParsingBuf[0] != FieldSeparator) {
     reportError("expected field separator");
@@ -945,7 +955,10 @@ ErrorOr<Location> DataReader::parseLocation(char EndChar,
   consumeAllRemainingFS();
 
   // Read the string containing the symbol or the DSO name
-  ErrorOr<StringRef> NameRes = parseString(FieldSeparator);
+  if (!expectAndConsumeNS())
+    return make_error_code(llvm::errc::io_error);
+
+  auto NameRes = parseString(NameSeparator);
   if (std::error_code EC = NameRes.getError())
     return EC;
   StringRef Name = NameRes.get();

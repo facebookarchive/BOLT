@@ -23,7 +23,7 @@
   .type main, %function
   .p2align  4
 main:
-# FDATA: 0 [unknown] 0 1 main 0 0 510
+# FDATA: 0 "[unknown]" 0 1 "main" 0 0 510
   pushq %rbp
   movq  %rsp, %rbp
   pushq %rbx                  # We save rbx here, but there is an
@@ -32,8 +32,8 @@ main:
   cmpl  $0x2, %edi
 .J1:
   jb    .BBend
-# FDATA: 1 main #.J1# 1 main #.BB2# 0 10
-# FDATA: 1 main #.J1# 1 main #.BBend# 0 500
+# FDATA: 1 "main" #.J1# 1 "main" #.BB2# 0 10
+# FDATA: 1 "main" #.J1# 1 "main" #.BBend# 0 500
 .BB2:
   movq $2, %rbx               # Use rbx in a cold block. Save rbx will be moved
                               # just before this instruction.

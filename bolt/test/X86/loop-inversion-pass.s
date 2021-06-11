@@ -11,15 +11,15 @@
 # RUN:    -loop-inversion-opt -o %t.out2 | FileCheck --check-prefix="CHECK2" %s
 
 # The case where loop is used:
-# FDATA: 1 main 2 1 main #.J1# 0 420
-# FDATA: 1 main b 1 main #.Jloop# 0 420
-# FDATA: 1 main b 1 main d 0 1
+# FDATA: 1 "main" 2 1 "main" #.J1# 0 420
+# FDATA: 1 "main" b 1 "main" #.Jloop# 0 420
+# FDATA: 1 "main" b 1 "main" d 0 1
 # CHECK: BB Layout   : .LBB00, .Ltmp0, .Ltmp1, .LFT0
 
 # The case where loop is unused:
-# FDATA2: 1 main 2 1 main #.J1# 0 420
-# FDATA2: 1 main b 1 main #.Jloop# 0 1
-# FDATA2: 1 main b 1 main d 0 420
+# FDATA2: 1 "main" 2 1 "main" #.J1# 0 420
+# FDATA2: 1 "main" b 1 "main" #.Jloop# 0 1
+# FDATA2: 1 "main" b 1 "main" d 0 420
 # CHECK2: BB Layout   : .LBB00, .Ltmp1, .LFT0, .Ltmp0
 
     .text

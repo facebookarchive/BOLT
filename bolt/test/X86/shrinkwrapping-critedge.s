@@ -14,7 +14,7 @@
 
   .globl _start
 _start:
-# FDATA: 0 [unknown] 0 1 _start 0 0 1
+# FDATA: 0 "[unknown]" 0 1 "_start" 0 0 1
     push  %rbx
     je  b
 c:

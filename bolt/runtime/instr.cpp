@@ -521,12 +521,14 @@ char *serializeLoc(const ProfileWriterContext &Ctx, char *OutBuf,
   OutBuf = strCopy(OutBuf, "1 ");
   const char *Str = Ctx.Strings + Loc.FunctionName;
   uint32_t Size = 25;
+  *OutBuf++ = '"';
   while (*Str) {
     *OutBuf++ = *Str++;
     if (++Size >= BufSize)
       break;
   }
   assert(!*Str, "buffer overflow, function name too large");
+  *OutBuf++ = '"';
   *OutBuf++ = ' ';
   OutBuf = intToStr(OutBuf, Loc.Offset, 16);
   *OutBuf++ = ' ';
@@ -1245,7 +1247,7 @@ void visitIndCallCounter(IndirectCallHashTable::MapEntry &Entry,
     char LineBuf[BufSize];
     char *Ptr = LineBuf;
     Ptr = serializeLoc(*Ctx, Ptr, *CallsiteDesc, BufSize);
-    Ptr = strCopy(Ptr, "0 [unknown] 0 0 ", BufSize - (Ptr - LineBuf) - 40);
+    Ptr = strCopy(Ptr, "0 \"[unknown]\" 0 0 ", BufSize - (Ptr - LineBuf) - 40);
     Ptr = intToStr(Ptr, Entry.Val, 10);
     *Ptr++ = '\n';
     __write(FD, LineBuf, Ptr - LineBuf);
@@ -1296,7 +1298,7 @@ void visitCallFlowEntry(CallFlowHashTable::MapEntry &Entry, int FD,
   }
   char LineBuf[BufSize];
   char *Ptr = LineBuf;
-  Ptr = strCopy(Ptr, "0 [unknown] 0 ", BufSize);
+  Ptr = strCopy(Ptr, "0 \"[unknown]\" 0 ", BufSize);
   Ptr = serializeLoc(*Ctx, Ptr, TargetDesc->Loc, BufSize - (Ptr - LineBuf));
   Ptr = strCopy(Ptr, "0 ", BufSize - (Ptr - LineBuf) - 25);
   Ptr = intToStr(Ptr, Entry.Val - Entry.Calls, 10);

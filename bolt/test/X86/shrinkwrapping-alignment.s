@@ -25,7 +25,7 @@
   .type bar, %function
   .p2align 4
 bar:
-# FDATA: 0 [unknown] 0 1 bar 0 0 510
+# FDATA: 0 "[unknown]" 0 1 "bar" 0 0 510
   pushq %rbp
   movq  %rsp, %rbp
   pushq %rbx                  # We save rbx here, but there is an
@@ -34,8 +34,8 @@ bar:
   cmpl  $0x2, %edi
 .J1:
   jb    .BBend
-# FDATA: 1 bar #.J1# 1 bar #.BB2# 0 10
-# FDATA: 1 bar #.J1# 1 bar #.BBend# 0 500
+# FDATA: 1 "bar" #.J1# 1 "bar" #.BB2# 0 10
+# FDATA: 1 "bar" #.J1# 1 "bar" #.BBend# 0 500
 .BB2:
   movq $2, %rbx               # Use rbx in a cold block
   xorq %rax, %rax

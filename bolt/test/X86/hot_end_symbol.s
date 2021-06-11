@@ -39,7 +39,7 @@
   .p2align  4
 main:
 __hot_start:
-# FDATA: 0 [unknown] 0 1 main 0 0 510
+# FDATA: 0 "[unknown]" 0 1 "main" 0 0 510
   pushq %rbp
   movq  %rsp, %rbp
   cmpl  $0x2, %edi

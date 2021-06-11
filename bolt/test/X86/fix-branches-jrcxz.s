@@ -26,7 +26,7 @@ main:
 .type test_function,@function
 .align 32
 test_function:
-# FDATA: 0 main 0 1 test_function 0 0 510
+# FDATA: 0 "main" 0 1 "test_function" 0 0 510
   xorq %rcx, %rcx
   andq $3, %rdi
   jmpq *jumptbl(,%rdi,8)
@@ -41,8 +41,8 @@ test_function:
   movl $0x0, %eax
 .J1:
   jrcxz .BBend
-# FDATA: 1 test_function #.J1# 1 test_function #.BB2# 0 10
-# FDATA: 1 test_function #.J1# 1 test_function #.BBend# 0 500
+# FDATA: 1 "test_function" #.J1# 1 "test_function" #.BB2# 0 10
+# FDATA: 1 "test_function" #.J1# 1 "test_function" #.BBend# 0 500
 .BB2:
   movl $0x2, %eax
   jmp .BBend

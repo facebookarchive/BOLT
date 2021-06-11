@@ -483,6 +483,7 @@ protected:
 
   void reportError(StringRef ErrorMsg);
   bool expectAndConsumeFS();
+  bool expectAndConsumeNS();
   void consumeAllRemainingFS();
   bool checkAndConsumeNewLine();
   ErrorOr<StringRef> parseString(char EndChar, bool EndNl=false);
@@ -518,6 +519,7 @@ protected:
   bool BATMode{false};
   StringSet<> EventNames;
   static const char FieldSeparator = ' ';
+  static const char NameSeparator = '"';
 
   /// Maps of common LTO names to possible matching profiles.
   StringMap<std::vector<FuncBranchData *>> LTOCommonNameMap;
