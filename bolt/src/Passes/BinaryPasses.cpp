@@ -1090,7 +1090,8 @@ bool SimplifyRODataLoads::simplifyRODataLoads(
       if (!DataSection || !DataSection->isReadOnly())
         continue;
 
-      if (BC.getRelocationAt(TargetAddress))
+      if (BC.getRelocationAt(TargetAddress) ||
+          BC.getDynamicRelocationAt(TargetAddress))
         continue;
 
       uint32_t Offset = TargetAddress - DataSection->getAddress();
