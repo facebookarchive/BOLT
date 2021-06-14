@@ -397,6 +397,10 @@ public:
     return Address2ProbesMap;
   }
 
+  const GUIDProbeFunctionMap &getGUID2FuncDescMap() const {
+    return GUID2FuncDescMap;
+  }
+
   const MCPseudoProbeFuncDesc *
   getInlinerDescForProbe(const MCDecodedPseudoProbe *Probe) const;
 
