@@ -322,6 +322,11 @@ TrapOldCode("trap-old-code",
   cl::Hidden,
   cl::cat(BoltCategory));
 
+static cl::opt<std::string> DWPPathName("dwp",
+                                        cl::desc("Path and name to DWP file."),
+                                        cl::Hidden, cl::ZeroOrMore,
+                                        cl::init(""), cl::cat(BoltCategory));
+
 cl::opt<bool>
 UpdateDebugSections("update-debug-sections",
   cl::desc("update DWARF debug sections of the executable"),
@@ -473,7 +478,8 @@ RewriteInstance::RewriteInstance(ELFObjectFileBase *File, const int Argc,
 
   BC = BinaryContext::createBinaryContext(
       File, IsPIC,
-      DWARFContext::create(*File, nullptr, "", WithColor::defaultErrorHandler,
+      DWARFContext::create(*File, nullptr, opts::DWPPathName,
+                           WithColor::defaultErrorHandler,
                            WithColor::defaultWarningHandler,
                            /*UsesRelocs=*/false));
 
