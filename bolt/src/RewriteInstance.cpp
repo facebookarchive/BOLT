@@ -577,6 +577,8 @@ void RewriteInstance::discoverStorage() {
                                                      Phdr.p_filesz,
                                                      Phdr.p_align};
     }
+    if (Phdr.p_type == ELF::PT_INTERP)
+      BC->hasInterpHeader = true;
   }
 
   for (const SectionRef &Section : InputFile->sections()) {
@@ -4824,6 +4826,15 @@ void RewriteInstance::patchELFDynamic(ELFObjectFile<ELFT> *File) {
           }
         }
       }
+      if (Dyn.getTag() == ELF::DT_INIT && !BC->hasInterpHeader) {
+        if (auto *RtLibrary = BC->getRuntimeLibrary()) {
+          if (auto Addr = RtLibrary->getRuntimeStartAddress()) {
+            LLVM_DEBUG(dbgs() << "BOLT-DEBUG: Set DT_INIT to 0x"
+                              << Twine::utohexstr(Addr) << '\n');
+            NewDE.d_un.d_ptr = Addr;
+          }
+        }
+      }
       break;
     case ELF::DT_FLAGS:
       if (BC->RequiresZNow) {
@@ -4883,6 +4894,12 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
 
   for (const Elf_Dyn &Dyn : DynamicEntries) {
     switch (Dyn.d_tag) {
+    case ELF::DT_INIT:
+      if (!BC->hasInterpHeader) {
+        LLVM_DEBUG(dbgs() << "BOLT-DEBUG: Set start function address\n");
+        BC->StartFunctionAddress = Dyn.getPtr();
+      }
+      break;
     case ELF::DT_FINI:
       BC->FiniFunctionAddress = Dyn.getPtr();
       break;
