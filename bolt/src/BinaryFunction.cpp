@@ -980,7 +980,13 @@ bool BinaryFunction::disassemble() {
       errs() << '\n';
       Instruction.dump_pretty(errs(), BC.InstPrinter.get());
       errs() << '\n';
-      return false;
+      errs() << "BOLT-ERROR: cannot handle PC-relative operand at 0x"
+             << Twine::utohexstr(Address) << ". Skipping function " << *this
+             << ".\n";
+      if (BC.HasRelocations)
+        exit(1);
+      IsSimple = false;
+      return;
     }
     if (TargetAddress == 0 && opts::Verbosity >= 1) {
       outs() << "BOLT-INFO: PC-relative operand is zero in function " << *this
@@ -1004,7 +1010,6 @@ bool BinaryFunction::disassemble() {
                          Instruction,
                          Expr,
                          *BC.Ctx, 0)));
-    return true;
   };
 
   // Used to fix the target of linker-generated AArch64 stubs with no relocation
@@ -1316,16 +1321,9 @@ bool BinaryFunction::disassemble() {
           };
         }
         // Indirect call. We only need to fix it if the operand is RIP-relative.
-        if (IsSimple && MIB->hasPCRelOperand(Instruction)) {
-          if (!handlePCRelOperand(Instruction, AbsoluteInstrAddr, Size)) {
-            errs() << "BOLT-ERROR: cannot handle PC-relative operand at 0x"
-                   << Twine::utohexstr(AbsoluteInstrAddr)
-                   << ". Skipping function " << *this << ".\n";
-            if (BC.HasRelocations)
-              exit(1);
-            IsSimple = false;
-          }
-        }
+        if (IsSimple && MIB->hasPCRelOperand(Instruction))
+          handlePCRelOperand(Instruction, AbsoluteInstrAddr, Size);
+
         // AArch64 indirect call - check for linker veneers, which lack
         // relocations and need manual adjustments
         MCInst *TargetHiBits, *TargetLowBits;
@@ -1345,18 +1343,8 @@ bool BinaryFunction::disassemble() {
           fixStubTarget(*TargetLowBits, *TargetHiBits, TargetAddress);
         }
       }
-    } else {
-      if (MIB->hasPCRelOperand(Instruction) && !UsedReloc) {
-        if (!handlePCRelOperand(Instruction, AbsoluteInstrAddr, Size)) {
-          errs() << "BOLT-ERROR: cannot handle PC-relative operand at 0x"
-                 << Twine::utohexstr(AbsoluteInstrAddr)
-                 << ". Skipping function " << *this << ".\n";
-          if (BC.HasRelocations)
-            exit(1);
-          IsSimple = false;
-        }
-      }
-    }
+    } else if (MIB->hasPCRelOperand(Instruction) && !UsedReloc)
+      handlePCRelOperand(Instruction, AbsoluteInstrAddr, Size);
 
 add_instruction:
     if (getDWARFLineTable()) {
