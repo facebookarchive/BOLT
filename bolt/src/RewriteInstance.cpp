@@ -4881,6 +4881,7 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
 
   if (!DynamicPhdr) {
     outs() << "BOLT-INFO: static input executable detected\n";
+    // TODO: static PIE executable might have dynamic header
     BC->IsStaticExecutable = true;
     return;
   }
