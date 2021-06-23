@@ -225,8 +225,8 @@ void Instrumentation::instrumentIndirectTarget(BinaryBasicBlock &BB,
   bool IsTailCall = BC.MIB->isTailCall(*Iter);
   std::vector<MCInst> CounterInstrs = BC.MIB->createInstrumentedIndirectCall(
       *Iter, IsTailCall,
-      IsTailCall ? Summary->IndTailCallHandlerFunc
-                 : Summary->IndCallHandlerFunc,
+      IsTailCall ? IndTailCallHandlerFunction->getSymbol()
+                 : IndCallHandlerFunction->getSymbol(),
       IndCallSiteID, &*BC.Ctx);
 
   Iter = BB.eraseInstruction(Iter);
@@ -531,10 +531,12 @@ void Instrumentation::runOnFunctions(BinaryContext &BC) {
                                   /*Alignment=*/1,
                                   /*IsReadOnly=*/true, ELF::SHT_NOTE);
 
-  Summary->IndCallHandlerFunc =
-      BC.Ctx->getOrCreateSymbol("__bolt_trampoline_ind_call");
-  Summary->IndTailCallHandlerFunc =
-      BC.Ctx->getOrCreateSymbol("__bolt_trampoline_ind_tailcall");
+  Summary->IndCallInstrPointer =
+      BC.Ctx->getOrCreateSymbol("__bolt_ind_call_instr_pointer");
+  Summary->IndTailCallInstrPointer =
+      BC.Ctx->getOrCreateSymbol("__bolt_ind_tailcall_instr_pointer");
+
+  createAuxiliaryFunctions(BC);
 
   ParallelUtilities::PredicateTy SkipPredicate = [&](const BinaryFunction &BF) {
     return (!BF.isSimple() || BF.isIgnored() ||
@@ -549,8 +551,6 @@ void Instrumentation::runOnFunctions(BinaryContext &BC) {
   ParallelUtilities::runOnEachFunctionWithUniqueAllocId(
       BC, ParallelUtilities::SchedulingPolicy::SP_INST_QUADRATIC, WorkFun,
       SkipPredicate, "instrumentation", /* ForceSequential=*/true);
-
-  createAuxiliaryFunctions(BC);
 
   if (BC.isMachO()) {
     if (BC.StartFunctionAddress) {
@@ -616,13 +616,24 @@ void Instrumentation::createAuxiliaryFunctions(BinaryContext &BC) {
     return Func;
   };
 
-  Summary->InitialIndCallHandlerFunction =
-      createSimpleFunction("__bolt_instr_default_ind_call_handler",
-                           BC.MIB->createInstrumentedNoopIndCallHandler());
+  BinaryFunction *IndCallHandler =
+      createSimpleFunction("__bolt_instr_ind_call_handler",
+                           BC.MIB->createInstrumentedIndCallHandler());
 
-  Summary->InitialIndTailCallHandlerFunction =
-      createSimpleFunction("__bolt_instr_default_ind_tailcall_handler",
-                           BC.MIB->createInstrumentedNoopIndTailCallHandler());
+  IndCallHandlerFunction = createSimpleFunction(
+      "__bolt_instr_ind_call_handler_func",
+      BC.MIB->createInstrumentedIndCallTrampoline(
+          Summary->IndCallInstrPointer, IndCallHandler->getSymbol(), &*BC.Ctx));
+
+  BinaryFunction *IndTailCallHandler =
+      createSimpleFunction("__bolt_instr_ind_tail_call_handler",
+                           BC.MIB->createInstrumentedIndTailCallHandler());
+
+  IndTailCallHandlerFunction =
+      createSimpleFunction("__bolt_instr_ind_tailcall_handler_func",
+                           BC.MIB->createInstrumentedIndCallTrampoline(
+                               Summary->IndTailCallInstrPointer,
+                               IndTailCallHandler->getSymbol(), &*BC.Ctx));
 
   createSimpleFunction("__bolt_num_counters_getter",
                        BC.MIB->createNumCountersGetter(BC.Ctx.get()));

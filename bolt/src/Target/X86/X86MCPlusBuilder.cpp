@@ -2956,10 +2956,7 @@ public:
 
   bool createTailCall(MCInst &Inst, const MCSymbol *Target,
                       MCContext *Ctx) override {
-    Inst.setOpcode(X86::TAILJMPd);
-    Inst.addOperand(MCOperand::createExpr(
-        MCSymbolRefExpr::create(Target, MCSymbolRefExpr::VK_None, *Ctx)));
-    return true;
+    return createDirectCall(Inst, Target, Ctx, /*IsTailCall*/ true);
   }
 
   bool createTrap(MCInst &Inst) const override {
@@ -3048,10 +3045,10 @@ public:
     Inst.setOpcode(X86::LFENCE);
   }
 
-  bool createDirectCall(MCInst &Inst, const MCSymbol *Target,
-                        MCContext *Ctx) override {
+  bool createDirectCall(MCInst &Inst, const MCSymbol *Target, MCContext *Ctx,
+                        bool IsTailCall) const override {
     Inst.clear();
-    Inst.setOpcode(X86::CALL64pcrel32);
+    Inst.setOpcode(IsTailCall ? X86::TAILJMPd : X86::CALL64pcrel32);
     Inst.addOperand(MCOperand::createExpr(
         MCSymbolRefExpr::create(Target, MCSymbolRefExpr::VK_None, *Ctx)));
     return true;
@@ -3195,7 +3192,7 @@ public:
     //   push %rdi
     //   movq $CallSiteID, %rdi
     //   push %rdi
-    //   callq/jmp *HandlerFuncAddr
+    //   callq/jmp HandlerFuncAddr
     Insts.emplace_back();
     createPushRegister(Insts.back(), TempReg, 8);
     if (UsesSP) { // Only adjust SP if we really need to
@@ -3215,8 +3212,8 @@ public:
     Insts.emplace_back();
     createPushRegister(Insts.back(), TempReg, 8);
     Insts.emplace_back();
-    createIndirectCall(Insts.back(), HandlerFuncAddr, Ctx,
-                       /*TailCall=*/TailCall);
+    createDirectCall(Insts.back(), HandlerFuncAddr, Ctx,
+                     /*TailCall=*/TailCall);
     // Carry over metadata
     for (int I = MCPlus::getNumPrimeOperands(CallInst),
              E = CallInst.getNumOperands();
@@ -3226,35 +3223,56 @@ public:
     return Insts;
   }
 
-  std::vector<MCInst>
-  createInstrumentedNoopIndCallHandler() const override {
+  std::vector<MCInst> createInstrumentedIndCallHandler() const override {
     const MCPhysReg TempReg = getIntArgRegister(0);
-    // For the default indirect call handler that is supposed to be a no-op,
-    // we just need to undo the sequence created for every ind call in
+    // We just need to undo the sequence created for every ind call in
     // instrumentIndirectTarget(), which can be accomplished minimally with:
+    //   popfq
     //   pop %rdi
     //   add $16, %rsp
     //   xchg (%rsp), %rdi
     //   jmp *-8(%rsp)
+    std::vector<MCInst> Insts(5);
+    createPopFlags(Insts[0], 8);
+    createPopRegister(Insts[1], TempReg, 8);
+    createStackPointerDecrement(Insts[2], 16, /*NoFlagsClobber=*/false);
+    createSwap(Insts[3], TempReg, X86::RSP, 0);
+    createIndirectBranch(Insts[4], X86::RSP, -8);
+    return Insts;
+  }
+
+  std::vector<MCInst> createInstrumentedIndTailCallHandler() const override {
+    const MCPhysReg TempReg = getIntArgRegister(0);
+    // Same thing as above, but for tail calls
+    //   popfq
+    //   add $16, %rsp
+    //   pop %rdi
+    //   jmp *-16(%rsp)
     std::vector<MCInst> Insts(4);
-    createPopRegister(Insts[0], TempReg, 8);
+    createPopFlags(Insts[0], 8);
     createStackPointerDecrement(Insts[1], 16, /*NoFlagsClobber=*/false);
-    createSwap(Insts[2], TempReg, X86::RSP, 0);
-    createIndirectBranch(Insts[3], X86::RSP, -8);
+    createPopRegister(Insts[2], TempReg, 8);
+    createIndirectBranch(Insts[3], X86::RSP, -16);
     return Insts;
   }
 
   std::vector<MCInst>
-  createInstrumentedNoopIndTailCallHandler() const override {
+  createInstrumentedIndCallTrampoline(const MCSymbol *InstrTrampoline,
+                                      const MCSymbol *IndCallHandler,
+                                      MCContext *Ctx) const override {
     const MCPhysReg TempReg = getIntArgRegister(0);
-    // Same thing as above, but for tail calls
-    //   add $16, %rsp
-    //   pop %rdi
-    //   jmp *-16(%rsp)
-    std::vector<MCInst> Insts(3);
-    createStackPointerDecrement(Insts[0], 16, /*NoFlagsClobber=*/false);
-    createPopRegister(Insts[1], TempReg, 8);
-    createIndirectBranch(Insts[2], X86::RSP, -16);
+    std::vector<MCInst> Insts;
+    Insts.emplace_back();
+    createPushFlags(Insts.back(), 8);
+    Insts.emplace_back();
+    createMove(Insts.back(), InstrTrampoline, TempReg, Ctx);
+    std::vector<MCInst> cmpJmp = createCmpJE(TempReg, 0, IndCallHandler, Ctx);
+    Insts.insert(Insts.end(), cmpJmp.begin(), cmpJmp.end());
+    Insts.emplace_back();
+    Insts.back().setOpcode(X86::CALL64r);
+    Insts.back().addOperand(MCOperand::createReg(TempReg));
+    Insts.emplace_back();
+    createDirectCall(Insts.back(), IndCallHandler, Ctx, /*IsTailCall*/ true);
     return Insts;
   }
 
