@@ -531,9 +531,8 @@ public:
   /// will have HasFixedLoadAddress set to false.
   bool HasFixedLoadAddress{true};
 
-  /// True if the binary has no dynamic dependencies, i.e., if it was statically
-  /// linked.
-  bool IsStaticExecutable{false};
+  /// Set to true if the binary contains PT_DYNAMIC header.
+  bool hasDynamicHeader{false};
 
   /// Set to true if the binary contains PT_INTERP header.
   bool hasInterpHeader{false};
@@ -638,6 +637,11 @@ public:
   bool isX86() const {
     return TheTriple->getArch() == llvm::Triple::x86 ||
            TheTriple->getArch() == llvm::Triple::x86_64;
+  }
+
+  bool isExecutable() const {
+    // TODO: handle static-pie binaries case
+    return hasInterpHeader;
   }
 
   /// Iterate over all BinaryData.

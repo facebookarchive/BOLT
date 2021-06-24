@@ -4639,7 +4639,7 @@ void RewriteInstance::patchELFSymTabs(ELFObjectFile<ELFT> *File) {
       break;
     }
   }
-  assert((DynSymSection || BC->IsStaticExecutable) &&
+  assert((DynSymSection || !BC->hasDynamicHeader) &&
          "dynamic symbol table expected");
   if (DynSymSection) {
     updateELFSymbolTable(
@@ -4774,7 +4774,7 @@ void RewriteInstance::patchELFGOT(ELFObjectFile<ELFT> *File) {
 
 template <typename ELFT>
 void RewriteInstance::patchELFDynamic(ELFObjectFile<ELFT> *File) {
-  if (BC->IsStaticExecutable)
+  if (!BC->hasDynamicHeader)
     return;
 
   const ELFFile<ELFT> &Obj = File->getELFFile();
@@ -4826,7 +4826,7 @@ void RewriteInstance::patchELFDynamic(ELFObjectFile<ELFT> *File) {
           }
         }
       }
-      if (Dyn.getTag() == ELF::DT_INIT && !BC->hasInterpHeader) {
+      if (Dyn.getTag() == ELF::DT_INIT && !BC->isExecutable()) {
         if (auto *RtLibrary = BC->getRuntimeLibrary()) {
           if (auto Addr = RtLibrary->getRuntimeStartAddress()) {
             LLVM_DEBUG(dbgs() << "BOLT-DEBUG: Set DT_INIT to 0x"
@@ -4880,11 +4880,12 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
   }
 
   if (!DynamicPhdr) {
-    outs() << "BOLT-INFO: static input executable detected\n";
-    // TODO: static PIE executable might have dynamic header
-    BC->IsStaticExecutable = true;
+    outs()
+        << "BOLT-INFO: static input executable detected (no dynamic header)\n";
+    BC->hasDynamicHeader = false;
     return;
   }
+  BC->hasDynamicHeader = true;
 
   assert(DynamicPhdr->p_memsz == DynamicPhdr->p_filesz &&
         "dynamic section sizes should match");
@@ -4896,7 +4897,7 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
   for (const Elf_Dyn &Dyn : DynamicEntries) {
     switch (Dyn.d_tag) {
     case ELF::DT_INIT:
-      if (!BC->hasInterpHeader) {
+      if (!BC->isExecutable()) {
         LLVM_DEBUG(dbgs() << "BOLT-DEBUG: Set start function address\n");
         BC->StartFunctionAddress = Dyn.getPtr();
       }
