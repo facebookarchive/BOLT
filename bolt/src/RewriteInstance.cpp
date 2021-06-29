@@ -1945,6 +1945,7 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
            truncateToSize(SymbolAddress + Addend - PCRelOffset, RelSize);
   };
 
+  (void)verifyExtractedValue;
   assert(verifyExtractedValue() && "mismatched extracted relocation value");
 
   return true;
@@ -2165,9 +2166,8 @@ void RewriteInstance::processLKBugTable() {
            "Reading valid PC-relative offset for a __bug_table entry");
     const int32_t SignedOffset = *Offset;
     const uint64_t RefAddress = EntryAddress + SignedOffset;
-    BinaryFunction *ContainingBF =
-        BC->getBinaryFunctionContainingAddress(RefAddress);
-    assert(ContainingBF && "__bug_table entries should point to a function");
+    assert(BC->getBinaryFunctionContainingAddress(RefAddress) &&
+           "__bug_table entries should point to a function");
 
     insertLKMarker(RefAddress, I, SignedOffset, true, "__bug_table");
   }
@@ -2206,9 +2206,11 @@ void RewriteInstance::processLKSMPLocks() {
 void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
   assert(BinarySection(*BC, Section).isAllocatable() && "allocatable expected");
 
-  StringRef SectionName = cantFail(Section.getName());
-  LLVM_DEBUG(dbgs() << "BOLT-DEBUG: reading relocations for section "
-                    << SectionName << ":\n");
+  LLVM_DEBUG({
+    StringRef SectionName = cantFail(Section.getName());
+    dbgs() << "BOLT-DEBUG: reading relocations for section " << SectionName
+           << ":\n";
+  });
 
   for (const RelocationRef &Rel : Section.relocations()) {
     uint64_t RType = Rel.getType();
@@ -2244,9 +2246,11 @@ void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
 }
 
 void RewriteInstance::readRelocations(const SectionRef &Section) {
-  StringRef SectionName = cantFail(Section.getName());
-  LLVM_DEBUG(dbgs() << "BOLT-DEBUG: reading relocations for section "
-                    << SectionName << ":\n");
+  LLVM_DEBUG({
+    StringRef SectionName = cantFail(Section.getName());
+    dbgs() << "BOLT-DEBUG: reading relocations for section " << SectionName
+           << ":\n";
+  });
   if (BinarySection(*BC, Section).isAllocatable()) {
     LLVM_DEBUG(dbgs() << "BOLT-DEBUG: ignoring runtime relocations\n");
     return;
