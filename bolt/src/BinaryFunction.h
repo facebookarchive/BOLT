@@ -1010,6 +1010,33 @@ public:
   /// to demangle it.
   std::string getDemangledName() const;
 
+  /// Return the name with escpaed whitespace and backslash characters
+  static std::string getEscapedName(const StringRef &Name) {
+    std::string Output = Name.str();
+    for (size_t I = 0; I < Output.size(); ++I) {
+      if (Output[I] == ' ' || Output[I] == '\\')
+        Output.insert(I++, 1, '\\');
+    }
+
+    return Output;
+  }
+
+  std::string getEscapedName() const {
+    StringRef Name = getOneName();
+    return getEscapedName(Name);
+  }
+
+  /// Return the unscaped name
+  static std::string getUnescapedName(const StringRef &Name) {
+    std::string Output = Name.str();
+    for (size_t I = 0; I < Output.size(); ++I) {
+      if (Output[I] == '\\')
+        Output.erase(I++, 1);
+    }
+
+    return Output;
+  }
+
   /// Call \p Callback for every name of this function as long as the Callback
   /// returns false. Stop if Callback returns true or all names have been used.
   /// Return the name for which the Callback returned true if any.

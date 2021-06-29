@@ -62,10 +62,11 @@ bool hasVolatileName(const BinaryFunction &BF) {
   return false;
 }
 
-/// Return standard name of the function possibly renamed by BOLT.
-StringRef normalizeName(StringRef Name) {
+/// Return standard escaped name of the function possibly renamed by BOLT.
+std::string normalizeName(StringRef NameRef) {
   // Strip "PG." prefix used for globalized locals.
-  return Name.startswith("PG.") ? Name.substr(2) : Name;
+  NameRef = NameRef.startswith("PG.") ? NameRef.substr(2) : NameRef;
+  return BinaryFunction::getEscapedName(NameRef);
 }
 
 } // anonymous namespace
@@ -859,14 +860,26 @@ bool DataReader::checkAndConsumeNewLine() {
 }
 
 ErrorOr<StringRef> DataReader::parseString(char EndChar, bool EndNl) {
+  assert(EndChar != '\\' && "EndChar could not be backslash!");
   std::string EndChars(1, EndChar);
+  EndChars.push_back('\\');
   if (EndNl)
     EndChars.push_back('\n');
-  size_t StringEnd = ParsingBuf.find_first_of(EndChars);
-  if (StringEnd == StringRef::npos || StringEnd == 0) {
-    reportError("malformed field");
-    return make_error_code(llvm::errc::io_error);
-  }
+
+  size_t StringEnd = 0;
+  do {
+    StringEnd = ParsingBuf.find_first_of(EndChars, StringEnd);
+    if (StringEnd == StringRef::npos ||
+        (StringEnd == 0 && ParsingBuf[StringEnd] != '\\')) {
+      reportError("malformed field");
+      return make_error_code(llvm::errc::io_error);
+    }
+
+    if (ParsingBuf[StringEnd] != '\\')
+      break;
+
+    StringEnd += 2;
+  } while (1);
 
   StringRef Str = ParsingBuf.substr(0, StringEnd);
 
@@ -1317,8 +1330,7 @@ fetchMapEntriesRegex(
   // Do a reverse order iteration since the name in profile has a higher chance
   // of matching a name at the end of the list.
   for (auto FI = FuncNames.rbegin(), FE = FuncNames.rend(); FI != FE; ++FI) {
-    StringRef Name = *FI;
-    Name = normalizeName(Name);
+    std::string Name = normalizeName(*FI);
     const Optional<StringRef> LTOCommonName = getLTOCommonName(Name);
     if (LTOCommonName) {
       auto I = LTOCommonNameMap.find(*LTOCommonName);
