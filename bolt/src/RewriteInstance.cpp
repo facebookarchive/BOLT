@@ -1951,11 +1951,34 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
 }
 
 void RewriteInstance::processDynamicRelocations() {
-  for (const SectionRef &Section : InputFile->sections()) {
-    if (Section.relocation_begin() != Section.relocation_end() &&
-        BinarySection(*BC, Section).isAllocatable()) {
-      readDynamicRelocations(Section);
+  // Read relocations for PLT - DT_JMPREL.
+  if (PLTRelocationsSize > 0) {
+    ErrorOr<BinarySection &> PLTRelSectionOrErr =
+        BC->getSectionForAddress(*PLTRelocationsAddress);
+    if (!PLTRelSectionOrErr) {
+      report_error("unable to find section corresponding to DT_JMPREL",
+                   PLTRelSectionOrErr.getError());
     }
+    if (PLTRelSectionOrErr->getSize() != PLTRelocationsSize) {
+      report_error("section size mismatch for DT_PLTRELSZ",
+                   errc::executable_format_error);
+    }
+    readDynamicRelocations(PLTRelSectionOrErr->getSectionRef());
+  }
+
+  // The rest of dynamic relocations - DT_RELA.
+  if (DynamicRelocationsSize > 0) {
+    ErrorOr<BinarySection &> DynamicRelSectionOrErr =
+        BC->getSectionForAddress(*DynamicRelocationsAddress);
+    if (!DynamicRelSectionOrErr) {
+      report_error("unable to find section corresponding to DT_RELA",
+                   DynamicRelSectionOrErr.getError());
+    }
+    if (DynamicRelSectionOrErr->getSize() != DynamicRelocationsSize) {
+      report_error("section size mismatch for DT_RELASZ",
+                   errc::executable_format_error);
+    }
+    readDynamicRelocations(DynamicRelSectionOrErr->getSectionRef());
   }
 }
 
@@ -2181,19 +2204,7 @@ void RewriteInstance::processLKSMPLocks() {
 }
 
 void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
-  if (!BC->DynamicRelocationsAddress || !BC->DynamicRelocationsSize)
-    return;
-
   assert(BinarySection(*BC, Section).isAllocatable() && "allocatable expected");
-
-  if (Section.getAddress() < *BC->DynamicRelocationsAddress ||
-      Section.getAddress() >=
-        *BC->DynamicRelocationsAddress + *BC->DynamicRelocationsSize)
-    return;
-
-  assert(Section.getAddress() + Section.getSize() <=
-           *BC->DynamicRelocationsAddress + *BC->DynamicRelocationsSize &&
-         "dynamic relocations section runs over ELF dynamic boundaries");
 
   StringRef SectionName = cantFail(Section.getName());
   LLVM_DEBUG(dbgs() << "BOLT-DEBUG: reading relocations for section "
@@ -2213,7 +2224,8 @@ void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
     if (SymbolIter != InputFile->symbol_end()) {
       SymbolName = cantFail(SymbolIter->getName());
       BinaryData *BD = BC->getBinaryDataByName(SymbolName);
-      Symbol = BD ? BD->getSymbol() : nullptr;
+      Symbol = BD ? BD->getSymbol()
+                  : BC->getOrCreateUndefinedGlobalSymbol(SymbolName);
       SymbolAddress = cantFail(SymbolIter->getAddress());
       (void)SymbolAddress;
     }
@@ -4893,13 +4905,25 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
       BC->FiniFunctionAddress = Dyn.getPtr();
       break;
     case ELF::DT_RELA:
-      BC->DynamicRelocationsAddress = Dyn.getPtr();
+      DynamicRelocationsAddress = Dyn.getPtr();
       break;
     case ELF::DT_RELASZ:
-      BC->DynamicRelocationsSize = Dyn.getVal();
+      DynamicRelocationsSize = Dyn.getVal();
+      break;
+    case ELF::DT_JMPREL:
+      PLTRelocationsAddress = Dyn.getPtr();
+      break;
+    case ELF::DT_PLTRELSZ:
+      PLTRelocationsSize = Dyn.getVal();
       break;
     }
   }
+
+  if (!DynamicRelocationsAddress)
+    DynamicRelocationsSize = 0;
+
+  if (!PLTRelocationsAddress)
+    PLTRelocationsSize = 0;
 }
 
 
