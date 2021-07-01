@@ -11,6 +11,7 @@
 #include "BinaryEmitter.h"
 #include "BinaryContext.h"
 #include "BinaryFunction.h"
+#include "Utils.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/CommandLine.h"
@@ -163,6 +164,8 @@ private:
   /// Emit jump table data. Callee supplies sections for the data.
   void emitJumpTable(const JumpTable &JT, MCSection *HotSection,
                      MCSection *ColdSection);
+
+  void emitCFIInstruction(const MCCFIInstruction &Inst) const;
 
   /// Emit exception handling ranges for the function.
   void emitLSDA(BinaryFunction &BF, bool EmitColdPart);
@@ -333,7 +336,7 @@ bool BinaryEmitter::emitFunction(BinaryFunction &Function, bool EmitColdPart) {
           MAI->getInitialFrameState();
       if (std::find(FrameInstrs.begin(), FrameInstrs.end(), CFIInstr) ==
           FrameInstrs.end())
-        Streamer.emitCFIInstruction(CFIInstr);
+        emitCFIInstruction(CFIInstr);
     }
   }
 
@@ -441,7 +444,7 @@ void BinaryEmitter::emitFunctionBody(BinaryFunction &BF, bool EmitColdPart,
         continue;
       }
       if (BC.MIB->isCFI(Instr)) {
-        Streamer.emitCFIInstruction(*BF.getCFIFor(Instr));
+        emitCFIInstruction(*BF.getCFIFor(Instr));
         continue;
       }
 
@@ -760,6 +763,53 @@ void BinaryEmitter::emitJumpTable(const JumpTable &JT, MCSection *HotSection,
       Streamer.emitValue(Value, JT.EntrySize);
     }
     Offset += JT.EntrySize;
+  }
+}
+
+void BinaryEmitter::emitCFIInstruction(const MCCFIInstruction &Inst) const {
+  switch (Inst.getOperation()) {
+  default:
+    llvm_unreachable("Unexpected instruction");
+  case MCCFIInstruction::OpDefCfaOffset:
+    Streamer.emitCFIDefCfaOffset(Inst.getOffset());
+    break;
+  case MCCFIInstruction::OpAdjustCfaOffset:
+    Streamer.emitCFIAdjustCfaOffset(Inst.getOffset());
+    break;
+  case MCCFIInstruction::OpDefCfa:
+    Streamer.emitCFIDefCfa(Inst.getRegister(), Inst.getOffset());
+    break;
+  case MCCFIInstruction::OpDefCfaRegister:
+    Streamer.emitCFIDefCfaRegister(Inst.getRegister());
+    break;
+  case MCCFIInstruction::OpOffset:
+    Streamer.emitCFIOffset(Inst.getRegister(), Inst.getOffset());
+    break;
+  case MCCFIInstruction::OpRegister:
+    Streamer.emitCFIRegister(Inst.getRegister(), Inst.getRegister2());
+    break;
+  case MCCFIInstruction::OpWindowSave:
+    Streamer.emitCFIWindowSave();
+    break;
+  case MCCFIInstruction::OpNegateRAState:
+    Streamer.emitCFINegateRAState();
+    break;
+  case MCCFIInstruction::OpSameValue:
+    Streamer.emitCFISameValue(Inst.getRegister());
+    break;
+  case MCCFIInstruction::OpGnuArgsSize:
+    Streamer.emitCFIGnuArgsSize(Inst.getOffset());
+    break;
+  case MCCFIInstruction::OpEscape:
+    Streamer.AddComment(Inst.getComment());
+    Streamer.emitCFIEscape(Inst.getValues());
+    break;
+  case MCCFIInstruction::OpRestore:
+    Streamer.emitCFIRestore(Inst.getRegister());
+    break;
+  case MCCFIInstruction::OpUndefined:
+    Streamer.emitCFIUndefined(Inst.getRegister());
+    break;
   }
 }
 

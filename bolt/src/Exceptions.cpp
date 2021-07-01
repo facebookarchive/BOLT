@@ -19,6 +19,7 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/LEB128.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include <map>
@@ -607,37 +608,21 @@ bool CFIReaderWriter::fillCFIInfoFor(BinaryFunction &Function) const {
             errs() << "BOLT-WARNING: DWARF val_offset() unimplemented\n";
           }
           return false;
-        case DW_CFA_expression:
         case DW_CFA_def_cfa_expression:
-        case DW_CFA_val_expression: {
-          MCDwarfExprBuilder Builder;
-          for (DWARFExpression::Operation &ExprOp : *Instr.Expression) {
-            const DWARFExpression::Operation::Description &Desc =
-                ExprOp.getDescription();
-            if (Desc.Op[0] == DWARFExpression::Operation::SizeNA) {
-              Builder.appendOperation(ExprOp.getCode());
-            } else if (Desc.Op[1] == DWARFExpression::Operation::SizeNA) {
-              Builder.appendOperation(ExprOp.getCode(),
-                                      ExprOp.getRawOperand(0));
-            } else {
-              Builder.appendOperation(ExprOp.getCode(), ExprOp.getRawOperand(0),
-                                      ExprOp.getRawOperand(1));
-            }
+        case DW_CFA_val_expression:
+        case DW_CFA_expression: {
+          StringRef ExprBytes = Instr.Expression->getData();
+          std::string Str;
+          raw_string_ostream OS(Str);
+          // Manually encode this instruction using CFI escape
+          OS << Opcode;
+          if (Opcode != DW_CFA_def_cfa_expression) {
+            encodeULEB128(Instr.Ops[0], OS);
           }
-          if (Opcode == DW_CFA_expression) {
-            Function.addCFIInstruction(
-                Offset, MCCFIInstruction::createExpression(
-                            nullptr, Instr.Ops[0], Builder.take()));
-          } else if (Opcode == DW_CFA_def_cfa_expression) {
-            Function.addCFIInstruction(Offset,
-                                       MCCFIInstruction::createDefCfaExpression(
-                                           nullptr, Builder.take()));
-          } else {
-            assert(Opcode == DW_CFA_val_expression && "Unexpected opcode");
-            Function.addCFIInstruction(
-                Offset, MCCFIInstruction::createValExpression(
-                            nullptr, Instr.Ops[0], Builder.take()));
-          }
+          encodeULEB128(ExprBytes.size(), OS);
+          OS << ExprBytes;
+          Function.addCFIInstruction(
+              Offset, MCCFIInstruction::createEscape(nullptr, OS.str()));
           break;
         }
         case DW_CFA_MIPS_advance_loc8:

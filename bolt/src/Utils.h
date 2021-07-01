@@ -18,6 +18,7 @@
 #include "llvm/Support/Error.h"
 
 namespace llvm {
+class MCCFIInstruction;
 namespace bolt {
 
 /// Free memory allocated for \p List.
@@ -40,7 +41,15 @@ std::string getEscapedName(const StringRef &Name);
 /// Return the unescaped name
 std::string getUnescapedName(const StringRef &Name);
 
+// Determines which register a given DWARF expression is being assigned to.
+// If the expression is defining the CFA, return NoneType.
+Optional<uint8_t> readDWARFExpressionTargetReg(StringRef ExprBytes);
+
 } // namespace bolt
+
+bool operator==(const llvm::MCCFIInstruction &L,
+                const llvm::MCCFIInstruction &R);
+
 } // namespace llvm
 
 #endif
