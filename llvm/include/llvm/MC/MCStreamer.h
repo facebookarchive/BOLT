@@ -1002,7 +1002,6 @@ public:
   virtual void emitCFIRegister(int64_t Register1, int64_t Register2);
   virtual void emitCFIWindowSave();
   virtual void emitCFINegateRAState();
-  virtual void emitCFIInstruction(const MCCFIInstruction &Inst);
 
   virtual void EmitWinCFIStartProc(const MCSymbol *Symbol, SMLoc Loc = SMLoc());
   virtual void EmitWinCFIEndProc(SMLoc Loc = SMLoc());

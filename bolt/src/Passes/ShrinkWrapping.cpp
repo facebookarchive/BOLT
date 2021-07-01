@@ -385,7 +385,7 @@ void StackLayoutModifier::classifyCFIs() {
     for (MCInst &Inst : *BB) {
       if (!BC.MIB->isCFI(Inst))
         continue;
-      MCCFIInstruction *CFI = BF.getCFIFor(Inst);
+      const MCCFIInstruction *CFI = BF.getCFIFor(Inst);
       switch (CFI->getOperation()) {
       case MCCFIInstruction::OpDefCfa:
         CfaOffset = -CFI->getOffset();
@@ -662,7 +662,7 @@ void StackLayoutModifier::performChanges() {
         if (ModifiedCFIIndices.count(CFINum))
           continue;
         ModifiedCFIIndices.insert(CFINum);
-        MCCFIInstruction *CFI = BF.getCFIFor(Inst);
+        const MCCFIInstruction *CFI = BF.getCFIFor(Inst);
         const MCCFIInstruction::OpType Operation = CFI->getOperation();
         if (Operation == MCCFIInstruction::OpDefCfa ||
             Operation == MCCFIInstruction::OpDefCfaOffset) {
@@ -670,7 +670,7 @@ void StackLayoutModifier::performChanges() {
         }
         LLVM_DEBUG(dbgs() << "Changing CFI offset from " << CFI->getOffset()
                           << " to " << (CFI->getOffset() + Adjustment) << "\n");
-        CFI->setOffset(CFI->getOffset() + Adjustment);
+        BF.mutateCFIOffsetFor(Inst, CFI->getOffset() + Adjustment);
         continue;
       }
       int32_t SrcImm = 0;
@@ -1196,7 +1196,7 @@ void ShrinkWrapping::scheduleOldSaveRestoresRemoval(unsigned CSR,
       const bool RecordDeletedPopCFIs =
           RestoredReg == CSR && DeletedPopCFIs[CSR].empty();
       for (MCInst *CFI : CFIs) {
-        MCCFIInstruction *MCCFI = BF.getCFIFor(*CFI);
+        const MCCFIInstruction *MCCFI = BF.getCFIFor(*CFI);
         // Do not touch these...
         if (MCCFI->getOperation() == MCCFIInstruction::OpRestoreState ||
             MCCFI->getOperation() == MCCFIInstruction::OpRememberState)
@@ -1618,7 +1618,7 @@ void ShrinkWrapping::rebuildCFIForSP() {
     for (MCInst &Inst : BB) {
       if (!BC.MIB->isCFI(Inst))
         continue;
-      MCCFIInstruction *CFI = BF.getCFIFor(Inst);
+      const MCCFIInstruction *CFI = BF.getCFIFor(Inst);
       if (CFI->getOperation() == MCCFIInstruction::OpDefCfaOffset)
         BC.MIB->addAnnotation(Inst, "DeleteMe", 0U, AllocatorId);
     }
@@ -1716,7 +1716,7 @@ MCInst ShrinkWrapping::createStackAccess(int SPVal, int FPVal,
 }
 
 void ShrinkWrapping::updateCFIInstOffset(MCInst &Inst, int64_t NewOffset) {
-  MCCFIInstruction *CFI = BF.getCFIFor(Inst);
+  const MCCFIInstruction *CFI = BF.getCFIFor(Inst);
   if (UpdatedCFIs.count(CFI))
     return;
 
@@ -1724,7 +1724,7 @@ void ShrinkWrapping::updateCFIInstOffset(MCInst &Inst, int64_t NewOffset) {
   case MCCFIInstruction::OpDefCfa:
   case MCCFIInstruction::OpDefCfaRegister:
   case MCCFIInstruction::OpDefCfaOffset:
-    CFI->setOffset(-NewOffset);
+    CFI = BF.mutateCFIOffsetFor(Inst, -NewOffset);
     break;
   case MCCFIInstruction::OpOffset:
   default:

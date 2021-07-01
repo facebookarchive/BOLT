@@ -13,6 +13,7 @@
 #include "DataflowAnalysis.h"
 #include "DataflowInfoManager.h"
 #include "MCPlus.h"
+#include "Utils.h"
 #include <numeric>
 
 #define DEBUG_TYPE "regreassign"
@@ -71,7 +72,7 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
     for (MCInst &Inst : BB) {
       if (!BC.MIB->isCFI(Inst))
         continue;
-      MCCFIInstruction *CFI = Function.getCFIFor(Inst);
+      const MCCFIInstruction *CFI = Function.getCFIFor(Inst);
       if (Changed.count(CFI))
         continue;
       Changed.insert(CFI);
@@ -81,11 +82,19 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
         const unsigned CFIReg2 = CFI->getRegister2();
         const MCPhysReg Reg2 = *BC.MRI->getLLVMRegNum(CFIReg2, /*isEH=*/false);
         if (AliasA.test(Reg2)) {
-          CFI->setRegister2(BC.MRI->getDwarfRegNum(
-              BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg2)), false));
+          Function.setCFIFor(
+              Inst, MCCFIInstruction::createRegister(
+                        nullptr, CFI->getRegister(),
+                        BC.MRI->getDwarfRegNum(
+                            BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg2)),
+                            false)));
         } else if (AliasB.test(Reg2)) {
-          CFI->setRegister2(BC.MRI->getDwarfRegNum(
-              BC.MIB->getAliasSized(A, BC.MIB->getRegSize(Reg2)), false));
+          Function.setCFIFor(
+              Inst, MCCFIInstruction::createRegister(
+                        nullptr, CFI->getRegister(),
+                        BC.MRI->getDwarfRegNum(
+                            BC.MIB->getAliasSized(A, BC.MIB->getRegSize(Reg2)),
+                            false)));
         }
       }
       LLVM_FALLTHROUGH;
@@ -96,16 +105,29 @@ void RegReAssign::swap(BinaryContext &BC, BinaryFunction &Function, MCPhysReg A,
       case MCCFIInstruction::OpSameValue:
       case MCCFIInstruction::OpDefCfaRegister:
       case MCCFIInstruction::OpRelOffset:
-      case MCCFIInstruction::OpExpression:
-      case MCCFIInstruction::OpValExpression: {
-        const unsigned CFIReg = CFI->getRegister();
+      case MCCFIInstruction::OpEscape: {
+        unsigned CFIReg;
+        if (CFI->getOperation() != MCCFIInstruction::OpEscape) {
+          CFIReg = CFI->getRegister();
+        } else {
+          Optional<uint8_t> Reg =
+              readDWARFExpressionTargetReg(CFI->getValues());
+          // Handle DW_CFA_def_cfa_expression
+          if (!Reg)
+            break;
+          CFIReg = *Reg;
+        }
         const MCPhysReg Reg = *BC.MRI->getLLVMRegNum(CFIReg, /*isEH=*/false);
         if (AliasA.test(Reg)) {
-          CFI->setRegister(BC.MRI->getDwarfRegNum(
-              BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg)), false));
+          Function.mutateCFIRegisterFor(
+              Inst,
+              BC.MRI->getDwarfRegNum(
+                  BC.MIB->getAliasSized(B, BC.MIB->getRegSize(Reg)), false));
         } else if (AliasB.test(Reg)) {
-          CFI->setRegister(BC.MRI->getDwarfRegNum(
-              BC.MIB->getAliasSized(A, BC.MIB->getRegSize(Reg)), false));
+          Function.mutateCFIRegisterFor(
+              Inst,
+              BC.MRI->getDwarfRegNum(
+                  BC.MIB->getAliasSized(A, BC.MIB->getRegSize(Reg)), false));
         }
         break;
       }

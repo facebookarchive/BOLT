@@ -440,57 +440,6 @@ public:
                    SMLoc &Loc);
 };
 
-/// \brief A sequence of MCDwarfOperations corresponds to a DWARF expression,
-/// used as operand in some MCCFIInstructions.
-struct MCDwarfOperation {
-  uint8_t Operation{0};
-  uint64_t Operand0{0};
-  uint64_t Operand1{0};
-
-  MCDwarfOperation(uint8_t O, uint64_t O0, uint64_t O1)
-      : Operation(O), Operand0(O0), Operand1(O1) {}
-
-  bool operator==(const MCDwarfOperation &Other) const {
-    return (Other.Operation == Operation && Other.Operand0 == Operand0 &&
-            Other.Operand1 == Operand1);
-  }
-};
-typedef std::vector<MCDwarfOperation> MCDwarfExpression;
-
-/// \brief This builder should be used to create MCDwarfExpression objects
-/// before feeding them to a CFIInstruction factory method.
-class MCDwarfExprBuilder {
-public:
-  MCDwarfExprBuilder() {}
-
-private:
-  MCDwarfExpression Expr;
-
-public:
-  MCDwarfExprBuilder &appendOperation(uint8_t Operation) {
-    Expr.push_back(MCDwarfOperation(Operation, 0, 0));
-    return *this;
-  }
-
-  MCDwarfExprBuilder &appendOperation(uint8_t Operation, uint64_t Op0) {
-    Expr.push_back(MCDwarfOperation(Operation, Op0, 0));
-    return *this;
-  }
-
-  MCDwarfExprBuilder &appendOperation(uint8_t Operation, uint64_t Op0,
-                                   uint64_t Op1) {
-    Expr.push_back(MCDwarfOperation(Operation, Op0, Op1));
-    return *this;
-  }
-
-  /// \brief Return the resulting expression and reset internal state
-  MCDwarfExpression take() {
-    MCDwarfExpression Res;
-    std::swap(Res, Expr);
-    return Res;
-  }
-};
-
 class MCCFIInstruction {
 public:
   enum OpType {
@@ -510,9 +459,6 @@ public:
     OpRegister,
     OpWindowSave,
     OpNegateRAState,
-    OpExpression,
-    OpDefCfaExpression,
-    OpValExpression,
     OpGnuArgsSize
   };
 
@@ -526,16 +472,13 @@ private:
   };
   unsigned AddressSpace;
   std::vector<char> Values;
-  MCDwarfExpression Expression;
   std::string Comment;
 
   MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R, int O, StringRef V,
                    StringRef Comment = "")
       : Operation(Op), Label(L), Register(R), Offset(O),
         Values(V.begin(), V.end()), Comment(Comment) {
-    assert(Op != OpRegister && Op != OpLLVMDefAspaceCfa &&
-           Op != OpDefCfaExpression && Op != OpValExpression &&
-           Op != OpExpression);
+    assert(Op != OpRegister && Op != OpLLVMDefAspaceCfa);
   }
 
   MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R1, unsigned R2)
@@ -546,20 +489,6 @@ private:
   MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R, int O, unsigned AS)
       : Operation(Op), Label(L), Register(R), Offset(O), AddressSpace(AS) {
     assert(Op == OpLLVMDefAspaceCfa);
-  }
-
-  MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R,
-                   const MCDwarfExpression &E)
-      : Operation(Op), Label(L), Register(R), Offset(0), Expression(E) {
-    assert(Op == OpDefCfaExpression || Op == OpValExpression ||
-           Op == OpExpression);
-  }
-
-  MCCFIInstruction(OpType Op, MCSymbol *L, unsigned R, MCDwarfExpression &&E)
-      : Operation(Op), Label(L), Register(R), Offset(0),
-        Expression(std::move(E)) {
-    assert(Op == OpDefCfaExpression || Op == OpValExpression ||
-           Op == OpExpression);
   }
 
 public:
@@ -674,57 +603,15 @@ public:
     return MCCFIInstruction(OpGnuArgsSize, L, 0, Size, "");
   }
 
-  /// \brief MCCFIInstructions that refer to an expression, expression object is
-  /// created by copying
-  static MCCFIInstruction createDefCfaExpression(MCSymbol *L,
-                                                 const MCDwarfExpression &E) {
-    return MCCFIInstruction(OpDefCfaExpression, L, 0, E);
-  }
-
-  static MCCFIInstruction createValExpression(MCSymbol *L, unsigned R,
-                                              const MCDwarfExpression &E) {
-    return MCCFIInstruction(OpValExpression, L, R, E);
-  }
-
-  static MCCFIInstruction createExpression(MCSymbol *L, unsigned R,
-                                           const MCDwarfExpression &E) {
-    return MCCFIInstruction(OpExpression, L, R, E);
-  }
-
-  /// \brief MCCFIInstructions that refer to an expression, expression object is
-  /// moved from an r-value
-  static MCCFIInstruction createDefCfaExpression(MCSymbol *L,
-                                                 MCDwarfExpression &&E) {
-    return MCCFIInstruction(OpDefCfaExpression, L, 0, E);
-  }
-
-  static MCCFIInstruction createValExpression(MCSymbol *L, unsigned R,
-                                              MCDwarfExpression &&E) {
-    return MCCFIInstruction(OpValExpression, L, R, E);
-  }
-
-  static MCCFIInstruction createExpression(MCSymbol *L, unsigned R,
-                                           MCDwarfExpression &&E) {
-    return MCCFIInstruction(OpExpression, L, R, E);
-  }
-
-  bool operator==(const MCCFIInstruction &Other) const {
-    return (Other.Operation == Operation && Other.Label == Label &&
-            Other.Offset == Offset && Other.Register == Register &&
-            Other.Expression == Expression);
-  }
-
   OpType getOperation() const { return Operation; }
   MCSymbol *getLabel() const { return Label; }
-  void setLabel(MCSymbol *L) { Label = L; }
 
   unsigned getRegister() const {
     assert(Operation == OpDefCfa || Operation == OpOffset ||
            Operation == OpRestore || Operation == OpUndefined ||
            Operation == OpSameValue || Operation == OpDefCfaRegister ||
            Operation == OpRelOffset || Operation == OpRegister ||
-           Operation == OpLLVMDefAspaceCfa || Operation == OpExpression ||
-           Operation == OpValExpression);
+           Operation == OpLLVMDefAspaceCfa);
     return Register;
   }
 
@@ -744,33 +631,6 @@ public:
            Operation == OpAdjustCfaOffset || Operation == OpGnuArgsSize ||
            Operation == OpLLVMDefAspaceCfa);
     return Offset;
-  }
-
-  void setOffset(int NewOffset) {
-    assert(Operation == OpDefCfa || Operation == OpOffset ||
-           Operation == OpRelOffset || Operation == OpDefCfaOffset ||
-           Operation == OpAdjustCfaOffset || Operation == OpGnuArgsSize);
-    Offset = NewOffset;
-  }
-
-  void setRegister(unsigned NewReg) {
-    assert(Operation == OpDefCfa || Operation == OpOffset ||
-           Operation == OpRestore || Operation == OpUndefined ||
-           Operation == OpSameValue || Operation == OpDefCfaRegister ||
-           Operation == OpRelOffset || Operation == OpRegister ||
-           Operation == OpExpression || Operation == OpValExpression);
-    Register = NewReg;
-  }
-
-  void setRegister2(unsigned NewReg) {
-    assert(Operation == OpRegister);
-    Register2 = NewReg;
-  }
-
-  const MCDwarfExpression &getExpression() const {
-    assert(Operation == OpDefCfaExpression || Operation == OpExpression ||
-           Operation == OpValExpression);
-    return Expression;
   }
 
   StringRef getValues() const {

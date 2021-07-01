@@ -14,6 +14,7 @@
 #include "MCPlusBuilder.h"
 #include "NameResolver.h"
 #include "NameShortener.h"
+#include "Utils.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/edit_distance.h"
@@ -29,6 +30,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/GraphWriter.h"
+#include "llvm/Support/LEB128.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/Timer.h"
 #include "llvm/Support/raw_ostream.h"
@@ -683,6 +685,98 @@ void BinaryFunction::printRelocations(raw_ostream &OS,
     Sep = ", ";
     ++RI;
   }
+}
+
+namespace {
+std::string mutateDWARFExpressionTargetReg(const MCCFIInstruction &Instr,
+                                           MCPhysReg NewReg) {
+  StringRef ExprBytes = Instr.getValues();
+  assert(ExprBytes.size() > 1 && "DWARF expression CFI is too short");
+  uint8_t Opcode = ExprBytes[0];
+  assert((Opcode == dwarf::DW_CFA_expression ||
+          Opcode == dwarf::DW_CFA_val_expression) &&
+         "invalid DWARF expression CFI");
+  const uint8_t *const Start =
+      reinterpret_cast<const uint8_t *>(ExprBytes.drop_front(1).data());
+  const uint8_t *const End =
+      reinterpret_cast<const uint8_t *>(Start + ExprBytes.size() - 1);
+  unsigned Size = 0;
+  decodeULEB128(Start, &Size, End);
+  assert(Size > 0 && "Invalid reg encoding for DWARF expression CFI");
+  SmallString<8> Tmp;
+  raw_svector_ostream OSE(Tmp);
+  encodeULEB128(NewReg, OSE);
+  return Twine(ExprBytes.slice(0, 1))
+      .concat(OSE.str())
+      .concat(ExprBytes.drop_front(1 + Size))
+      .str();
+}
+} // namespace
+
+void BinaryFunction::mutateCFIRegisterFor(const MCInst &Instr,
+                                          MCPhysReg NewReg) {
+  const MCCFIInstruction *OldCFI = getCFIFor(Instr);
+  assert(OldCFI && "invalid CFI instr");
+  switch (OldCFI->getOperation()) {
+  default:
+    llvm_unreachable("Unexpected instruction");
+  case MCCFIInstruction::OpDefCfa:
+    setCFIFor(Instr, MCCFIInstruction::cfiDefCfa(nullptr, NewReg,
+                                                 OldCFI->getOffset()));
+    break;
+  case MCCFIInstruction::OpDefCfaRegister:
+    setCFIFor(Instr, MCCFIInstruction::createDefCfaRegister(nullptr, NewReg));
+    break;
+  case MCCFIInstruction::OpOffset:
+    setCFIFor(Instr, MCCFIInstruction::createOffset(nullptr, NewReg,
+                                                    OldCFI->getOffset()));
+    break;
+  case MCCFIInstruction::OpRegister:
+    setCFIFor(Instr, MCCFIInstruction::createRegister(nullptr, NewReg,
+                                                      OldCFI->getRegister2()));
+    break;
+  case MCCFIInstruction::OpSameValue:
+    setCFIFor(Instr, MCCFIInstruction::createSameValue(nullptr, NewReg));
+    break;
+  case MCCFIInstruction::OpEscape:
+    setCFIFor(Instr,
+              MCCFIInstruction::createEscape(
+                  nullptr,
+                  StringRef(mutateDWARFExpressionTargetReg(*OldCFI, NewReg))));
+    break;
+  case MCCFIInstruction::OpRestore:
+    setCFIFor(Instr, MCCFIInstruction::createRestore(nullptr, NewReg));
+    break;
+  case MCCFIInstruction::OpUndefined:
+    setCFIFor(Instr, MCCFIInstruction::createUndefined(nullptr, NewReg));
+    break;
+  }
+}
+
+const MCCFIInstruction *BinaryFunction::mutateCFIOffsetFor(const MCInst &Instr,
+                                                           int64_t NewOffset) {
+  const MCCFIInstruction *OldCFI = getCFIFor(Instr);
+  assert(OldCFI && "invalid CFI instr");
+  switch (OldCFI->getOperation()) {
+  default:
+    llvm_unreachable("Unexpected instruction");
+  case MCCFIInstruction::OpDefCfaOffset:
+    setCFIFor(Instr, MCCFIInstruction::cfiDefCfaOffset(nullptr, NewOffset));
+    break;
+  case MCCFIInstruction::OpAdjustCfaOffset:
+    setCFIFor(Instr,
+              MCCFIInstruction::createAdjustCfaOffset(nullptr, NewOffset));
+    break;
+  case MCCFIInstruction::OpDefCfa:
+    setCFIFor(Instr, MCCFIInstruction::cfiDefCfa(nullptr, OldCFI->getRegister(),
+                                                 NewOffset));
+    break;
+  case MCCFIInstruction::OpOffset:
+    setCFIFor(Instr, MCCFIInstruction::createOffset(
+                         nullptr, OldCFI->getRegister(), NewOffset));
+    break;
+  }
+  return getCFIFor(Instr);
 }
 
 IndirectBranchType
@@ -2392,8 +2486,6 @@ private:
     case MCCFIInstruction::OpRestore:
     case MCCFIInstruction::OpUndefined:
     case MCCFIInstruction::OpRegister:
-    case MCCFIInstruction::OpExpression:
-    case MCCFIInstruction::OpValExpression:
       RegRule[Instr.getRegister()] = RuleNumber;
       break;
     case MCCFIInstruction::OpDefCfaRegister:
@@ -2409,12 +2501,18 @@ private:
       CFAOffset = Instr.getOffset();
       CFARule = UNKNOWN;
       break;
-    case MCCFIInstruction::OpDefCfaExpression:
-      CFARule = RuleNumber;
+    case MCCFIInstruction::OpEscape: {
+      Optional<uint8_t> Reg = readDWARFExpressionTargetReg(Instr.getValues());
+      // Handle DW_CFA_def_cfa_expression
+      if (!Reg) {
+        CFARule = RuleNumber;
+        break;
+      }
+      RegRule[*Reg] = RuleNumber;
       break;
+    }
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
-    case MCCFIInstruction::OpEscape:
     case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       break;
@@ -2504,15 +2602,27 @@ struct CFISnapshotDiff : public CFISnapshot {
     case MCCFIInstruction::OpRestore:
     case MCCFIInstruction::OpUndefined:
     case MCCFIInstruction::OpRegister:
-    case MCCFIInstruction::OpExpression:
-    case MCCFIInstruction::OpValExpression: {
-      if (RestoredRegs[Instr.getRegister()])
+    case MCCFIInstruction::OpEscape: {
+      uint32_t Reg;
+      if (Instr.getOperation() != MCCFIInstruction::OpEscape) {
+        Reg = Instr.getRegister();
+      } else {
+        Optional<uint8_t> R = readDWARFExpressionTargetReg(Instr.getValues());
+        // Handle DW_CFA_def_cfa_expression
+        if (!R) {
+          if (RestoredCFAReg && RestoredCFAOffset)
+            return true;
+          RestoredCFAReg = true;
+          RestoredCFAOffset = true;
+          return false;
+        }
+        Reg = *R;
+      }
+      if (RestoredRegs[Reg])
         return true;
-      RestoredRegs[Instr.getRegister()] = true;
+      RestoredRegs[Reg] = true;
       const int32_t CurRegRule =
-          RegRule.find(Instr.getRegister()) != RegRule.end()
-              ? RegRule[Instr.getRegister()]
-              : UNKNOWN;
+          RegRule.find(Reg) != RegRule.end() ? RegRule[Reg] : UNKNOWN;
       if (CurRegRule == UNKNOWN) {
         if (Instr.getOperation() == MCCFIInstruction::OpRestore ||
             Instr.getOperation() == MCCFIInstruction::OpSameValue)
@@ -2539,15 +2649,8 @@ struct CFISnapshotDiff : public CFISnapshot {
       RestoredCFAReg = true;
       RestoredCFAOffset = true;
       return CFAReg == Instr.getRegister() && CFAOffset == Instr.getOffset();
-    case MCCFIInstruction::OpDefCfaExpression:
-      if (RestoredCFAReg && RestoredCFAOffset)
-        return true;
-      RestoredCFAReg = true;
-      RestoredCFAOffset = true;
-      return false;
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
-    case MCCFIInstruction::OpEscape:
     case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       return false;
@@ -2609,6 +2712,32 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
   CFISnapshotDiff FromCFITable(ToCFITable);
   FromCFITable.advanceTo(FromState);
 
+  auto undoStateDefCfa = [&]() {
+    if (ToCFITable.CFARule == CFISnapshot::UNKNOWN) {
+      FrameInstructions.emplace_back(MCCFIInstruction::cfiDefCfa(
+          nullptr, ToCFITable.CFAReg, ToCFITable.CFAOffset));
+      if (FromCFITable.isRedundant(FrameInstructions.back())) {
+        FrameInstructions.pop_back();
+        return;
+      }
+      NewStates.push_back(FrameInstructions.size() - 1);
+      InsertIt = addCFIPseudo(InBB, InsertIt, FrameInstructions.size() - 1);
+      ++InsertIt;
+    } else if (ToCFITable.CFARule < 0) {
+      if (FromCFITable.isRedundant(CIEFrameInstructions[-ToCFITable.CFARule]))
+        return;
+      NewStates.push_back(FrameInstructions.size());
+      InsertIt = addCFIPseudo(InBB, InsertIt, FrameInstructions.size());
+      ++InsertIt;
+      FrameInstructions.emplace_back(CIEFrameInstructions[-ToCFITable.CFARule]);
+    } else if (!FromCFITable.isRedundant(
+                   FrameInstructions[ToCFITable.CFARule])) {
+      NewStates.push_back(ToCFITable.CFARule);
+      InsertIt = addCFIPseudo(InBB, InsertIt, ToCFITable.CFARule);
+      ++InsertIt;
+    }
+  };
+
   auto undoState = [&](const MCCFIInstruction &Instr) {
     switch (Instr.getOperation()) {
     case MCCFIInstruction::OpRememberState:
@@ -2619,13 +2748,24 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
     case MCCFIInstruction::OpOffset:
     case MCCFIInstruction::OpRestore:
     case MCCFIInstruction::OpUndefined:
-    case MCCFIInstruction::OpRegister:
-    case MCCFIInstruction::OpExpression:
-    case MCCFIInstruction::OpValExpression: {
-      if (ToCFITable.RegRule.find(Instr.getRegister()) ==
-          ToCFITable.RegRule.end()) {
+    case MCCFIInstruction::OpEscape:
+    case MCCFIInstruction::OpRegister: {
+      uint32_t Reg;
+      if (Instr.getOperation() != MCCFIInstruction::OpEscape) {
+        Reg = Instr.getRegister();
+      } else {
+        Optional<uint8_t> R = readDWARFExpressionTargetReg(Instr.getValues());
+        // Handle DW_CFA_def_cfa_expression
+        if (!R) {
+          undoStateDefCfa();
+          return;
+        }
+        Reg = *R;
+      }
+
+      if (ToCFITable.RegRule.find(Reg) == ToCFITable.RegRule.end()) {
         FrameInstructions.emplace_back(
-            MCCFIInstruction::createRestore(nullptr, Instr.getRegister()));
+            MCCFIInstruction::createRestore(nullptr, Reg));
         if (FromCFITable.isRedundant(FrameInstructions.back())) {
           FrameInstructions.pop_back();
           break;
@@ -2635,7 +2775,7 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
         ++InsertIt;
         break;
       }
-      const int32_t Rule = ToCFITable.RegRule[Instr.getRegister()];
+      const int32_t Rule = ToCFITable.RegRule[Reg];
       if (Rule < 0) {
         if (FromCFITable.isRedundant(CIEFrameInstructions[-Rule]))
           break;
@@ -2655,35 +2795,10 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
     case MCCFIInstruction::OpDefCfaRegister:
     case MCCFIInstruction::OpDefCfaOffset:
     case MCCFIInstruction::OpDefCfa:
-    case MCCFIInstruction::OpDefCfaExpression:
-      if (ToCFITable.CFARule == CFISnapshot::UNKNOWN) {
-        FrameInstructions.emplace_back(MCCFIInstruction::cfiDefCfa(
-            nullptr, ToCFITable.CFAReg, ToCFITable.CFAOffset));
-        if (FromCFITable.isRedundant(FrameInstructions.back())) {
-          FrameInstructions.pop_back();
-          break;
-        }
-        NewStates.push_back(FrameInstructions.size() - 1);
-        InsertIt = addCFIPseudo(InBB, InsertIt, FrameInstructions.size() - 1);
-        ++InsertIt;
-      } else if (ToCFITable.CFARule < 0) {
-        if (FromCFITable.isRedundant(CIEFrameInstructions[-ToCFITable.CFARule]))
-          break;
-        NewStates.push_back(FrameInstructions.size());
-        InsertIt = addCFIPseudo(InBB, InsertIt, FrameInstructions.size());
-        ++InsertIt;
-        FrameInstructions.emplace_back(
-            CIEFrameInstructions[-ToCFITable.CFARule]);
-      } else if (!FromCFITable.isRedundant(
-                     FrameInstructions[ToCFITable.CFARule])) {
-        NewStates.push_back(ToCFITable.CFARule);
-        InsertIt = addCFIPseudo(InBB, InsertIt, ToCFITable.CFARule);
-        ++InsertIt;
-      }
+      undoStateDefCfa();
       break;
     case MCCFIInstruction::OpAdjustCfaOffset:
     case MCCFIInstruction::OpWindowSave:
-    case MCCFIInstruction::OpEscape:
     case MCCFIInstruction::OpNegateRAState:
       llvm_unreachable("unsupported CFI opcode");
       break;
@@ -2692,7 +2807,6 @@ BinaryFunction::unwindCFIState(int32_t FromState, int32_t ToState,
       break;
     }
   };
-
 
   // Undo all modifications from ToState to FromState
   for (int32_t I = ToState, E = FromState; I != E; ++I) {
@@ -2720,7 +2834,7 @@ void BinaryFunction::normalizeCFIState() {
   std::stack<int32_t> Stack;
   for (BinaryBasicBlock *CurBB : BasicBlocksLayout) {
     for (auto II = CurBB->begin(); II != CurBB->end(); ++II) {
-      if (MCCFIInstruction *CFI = getCFIFor(*II)) {
+      if (const MCCFIInstruction *CFI = getCFIFor(*II)) {
         if (CFI->getOperation() == MCCFIInstruction::OpRememberState) {
           Stack.push(II->getOperand(0).getImm());
           continue;
@@ -2781,7 +2895,7 @@ bool BinaryFunction::finalizeCFIState() {
 
   for (BinaryBasicBlock *BB : BasicBlocksLayout) {
     for (auto II = BB->begin(); II != BB->end(); ) {
-      MCCFIInstruction *CFI = getCFIFor(*II);
+      const MCCFIInstruction *CFI = getCFIFor(*II);
       if (CFI &&
           (CFI->getOperation() == MCCFIInstruction::OpRememberState ||
            CFI->getOperation() == MCCFIInstruction::OpRestoreState)) {
@@ -3286,7 +3400,7 @@ void BinaryFunction::propagateGnuArgsSizeInfo(
     for (auto II = BB->begin(); II != BB->end(); ) {
       MCInst &Instr = *II;
       if (BC.MIB->isCFI(Instr)) {
-        MCCFIInstruction *CFI = getCFIFor(Instr);
+        const MCCFIInstruction *CFI = getCFIFor(Instr);
         if (CFI->getOperation() == MCCFIInstruction::OpGnuArgsSize) {
           CurrentGnuArgsSize = CFI->getOffset();
           // Delete DW_CFA_GNU_args_size instructions and only regenerate
