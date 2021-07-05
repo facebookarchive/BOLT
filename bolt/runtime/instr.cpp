@@ -54,14 +54,14 @@
 #endif
 
 
-#if defined(__APPLE__)
 extern "C" {
+
+#if defined(__APPLE__)
 extern uint64_t* _bolt_instr_locations_getter();
 extern uint32_t _bolt_num_counters_getter();
 
 extern uint8_t* _bolt_instr_tables_getter();
 extern uint32_t _bolt_instr_num_funcs_getter();
-}
 
 #else
 
@@ -104,12 +104,14 @@ extern bool __bolt_instr_use_pid;
 // TODO: We need better linking support to make that happen.
 extern void (*__bolt_ind_call_instr_pointer)();
 extern void (*__bolt_ind_tailcall_instr_pointer)();
-// Function pointers to init/fini trampoline routines in the binary, so we can
+// init/fini trampoline routines in the binary, so we can
 // resume regular execution of these functions that we hooked
-extern void (*__bolt_start_trampoline)();
-extern void (*__bolt_fini_trampoline)();
+extern void __bolt_start_trampoline();
+extern void __bolt_fini_trampoline();
 
 #endif
+
+}
 
 namespace {
 
@@ -1620,10 +1622,7 @@ extern "C" __attribute((naked)) void __bolt_instr_start()
 
 /// This is hooking into ELF's DT_FINI
 extern "C" void __bolt_instr_fini() {
-  // Currently using assembly inline for trampoline function call
-  // due to issues with function pointer dereferencing in case of
-  // C function call.
-  __asm__ __volatile__("call __bolt_fini_trampoline\n" :::);
+  __bolt_fini_trampoline();
   if (__bolt_instr_sleep_time == 0)
     __bolt_instr_data_dump();
   DEBUG(report("Finished.\n"));
