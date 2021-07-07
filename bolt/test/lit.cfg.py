@@ -44,8 +44,8 @@ llvm_config.use_default_substitutions()
 config.substitutions.append(('%host_cc', config.host_cc))
 config.substitutions.append(('%host_cxx', config.host_cxx))
 
-config.substitutions.append(('%cflags', '-no-pie'))
-config.substitutions.append(('%cxxflags', '-no-pie'))
+config.substitutions.append(('%cflags', '-no-pie -fcf-protection=none'))
+config.substitutions.append(('%cxxflags', '-no-pie -fcf-protection=none'))
 
 tool_dirs = [config.llvm_tools_dir,
              config.test_source_root]
