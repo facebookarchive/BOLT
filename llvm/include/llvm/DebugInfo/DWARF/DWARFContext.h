@@ -397,8 +397,7 @@ public:
          std::function<void(Error)> RecoverableErrorHandler =
              WithColor::defaultErrorHandler,
          std::function<void(Error)> WarningHandler =
-             WithColor::defaultWarningHandler,
-         bool UsesRelocs = true);
+             WithColor::defaultWarningHandler);
 
   static std::unique_ptr<DWARFContext>
   create(const StringMap<std::unique_ptr<MemoryBuffer>> &Sections,

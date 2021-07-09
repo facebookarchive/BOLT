@@ -879,8 +879,7 @@ void DWARFRewriter::writeOutDWOFiles(
     std::unique_ptr<BinaryContext> TmpBC = BinaryContext::createBinaryContext(
         File, false,
         DWARFContext::create(*File, nullptr, "", WithColor::defaultErrorHandler,
-                             WithColor::defaultWarningHandler,
-                             /*UsesRelocs=*/false));
+                             WithColor::defaultWarningHandler));
     std::unique_ptr<MCStreamer> Streamer = TmpBC->createStreamer(TempOut->os());
     const MCObjectFileInfo &MCOFI = *Streamer->getContext().getObjectFileInfo();
 
