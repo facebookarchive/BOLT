@@ -1603,8 +1603,6 @@ class DWARFObjInMemory final : public DWARFObject {
   // new decompressed sections are inserted at the end.
   std::deque<SmallString<0>> UncompressedSections;
 
-  bool UsesRelocs{true};
-
   StringRef *mapSectionToMember(StringRef Name) {
     if (DWARFSection *Sec = mapNameToDWARFSection(Name))
       return &Sec->Data;
@@ -1667,12 +1665,10 @@ public:
     }
   }
   DWARFObjInMemory(const object::ObjectFile &Obj, const LoadedObjectInfo *L,
-                   function_ref<void(Error)> HandleError,
-                   function_ref<void(Error)> HandleWarning,
-                   bool UsesRelocs = true)
+                   function_ref<void(Error)> HandleError, function_ref<void(Error)> HandleWarning )
       : IsLittleEndian(Obj.isLittleEndian()),
         AddressSize(Obj.getBytesInAddress()), FileName(Obj.getFileName()),
-        Obj(&Obj), UsesRelocs(UsesRelocs) {
+        Obj(&Obj) {
 
     StringMap<unsigned> SectionAmountMap;
     for (const SectionRef &Section : Obj.sections()) {
@@ -1752,7 +1748,7 @@ public:
         S.Data = Data;
       }
 
-      if (RelocatedSection == Obj.section_end() || !UsesRelocs)
+      if (RelocatedSection == Obj.section_end())
         continue;
 
       StringRef RelSecName;
@@ -1866,8 +1862,6 @@ public:
 
   Optional<RelocAddrEntry> find(const DWARFSection &S,
                                 uint64_t Pos) const override {
-    if (!UsesRelocs)
-      return None;
     auto &Sec = static_cast<const DWARFSectionMap &>(S);
     RelocAddrMap::const_iterator AI = Sec.Relocs.find(Pos);
     if (AI == Sec.Relocs.end())
@@ -1984,12 +1978,13 @@ public:
 };
 } // namespace
 
-std::unique_ptr<DWARFContext> DWARFContext::create(
-    const object::ObjectFile &Obj, const LoadedObjectInfo *L,
-    std::string DWPName, std::function<void(Error)> RecoverableErrorHandler,
-    std::function<void(Error)> WarningHandler, bool UsesRelocs) {
-  auto DObj = std::make_unique<DWARFObjInMemory>(
-      Obj, L, RecoverableErrorHandler, WarningHandler, UsesRelocs);
+std::unique_ptr<DWARFContext>
+DWARFContext::create(const object::ObjectFile &Obj, const LoadedObjectInfo *L,
+                     std::string DWPName,
+                     std::function<void(Error)> RecoverableErrorHandler,
+                     std::function<void(Error)> WarningHandler) {
+  auto DObj =
+      std::make_unique<DWARFObjInMemory>(Obj, L, RecoverableErrorHandler, WarningHandler);
   return std::make_unique<DWARFContext>(std::move(DObj), std::move(DWPName),
                                         RecoverableErrorHandler,
                                         WarningHandler);

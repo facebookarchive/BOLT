@@ -492,8 +492,7 @@ RewriteInstance::RewriteInstance(ELFObjectFileBase *File, const int Argc,
       File, IsPIC,
       DWARFContext::create(*File, nullptr, opts::DWPPathName,
                            WithColor::defaultErrorHandler,
-                           WithColor::defaultWarningHandler,
-                           /*UsesRelocs=*/false));
+                           WithColor::defaultWarningHandler));
 
   BAT = std::make_unique<BoltAddressTranslation>(*BC);
 
