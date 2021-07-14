@@ -1361,6 +1361,11 @@ void RewriteInstance::disassemblePLT() {
           exit(1);
         }
 
+        // Check if the entry size needs adjustment.
+        if (EntryOffset == 0 && BC->MIB->isTerminateBranch(Instruction) &&
+            EntrySize == 8)
+          EntrySize = 16;
+
         if (BC->MIB->isIndirectBranch(Instruction))
           break;
 
