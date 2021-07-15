@@ -234,6 +234,7 @@ public:
   // Root node has a GUID 0.
   bool isRoot() const { return Guid == 0; }
   InlinedProbeTreeMap &getChildren() { return Children; }
+  const InlinedProbeTreeMap &getChildren() const { return Children; }
   std::vector<ProbeType> &getProbes() { return Probes; }
   void addProbes(ProbeType Probe) { Probes.push_back(Probe); }
   // Caller node of the inline site
@@ -407,8 +408,11 @@ public:
   getInlinerDescForProbe(const MCDecodedPseudoProbe *Probe) const;
 
   std::string getSectionName() const { return SectionName; };
-};
 
+  const MCDecodedPseudoProbeInlineTree &getDummyInlineRoot() const {
+    return DummyInlineRoot;
+  }
+};
 } // end namespace llvm
 
 #endif // LLVM_MC_MCPSEUDOPROBE_H
