@@ -2,9 +2,9 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ rebased ]
+    branches: [ main ]
   pull_request:
-    branches: [ rebased ]
+    branches: [ main ]
 
 jobs:
   build:
