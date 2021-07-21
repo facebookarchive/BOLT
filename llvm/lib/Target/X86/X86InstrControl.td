@@ -297,16 +297,14 @@ let isCall = 1, isTerminator = 1, isReturn = 1, isBarrier = 1,
   def TCRETURNmi : PseudoI<(outs), (ins i32mem_TC:$dst, i32imm:$offset),
                            []>, Sched<[WriteJumpLd]>;
 
-  def TAILJMPd : Ii32PCRel<0xE9, RawFrm, (outs), (ins i32imm_brtarget:$dst),
-                           "jmp\t$dst", []>, Sched<[WriteJump]>;
+  def TAILJMPd : PseudoI<(outs), (ins i32imm_brtarget:$dst),
+                         []>, Sched<[WriteJump]>;
 
-  let isIndirectBranch = 1 in {
-    def TAILJMPr : I<0xFF, MRM4r, (outs), (ins ptr_rc_tailcall:$dst),
-                     "jmp{l}\t{*}$dst", []>, Sched<[WriteJump]>;
-    let mayLoad = 1 in
-    def TAILJMPm : I<0xFF, MRM4m, (outs), (ins i32mem_TC:$dst),
-                     "jmp{l}\t{*}$dst", []>, Sched<[WriteJumpLd]>;
-  }
+  def TAILJMPr : PseudoI<(outs), (ins ptr_rc_tailcall:$dst),
+                         []>, Sched<[WriteJump]>;
+  let mayLoad = 1 in
+  def TAILJMPm : PseudoI<(outs), (ins i32mem_TC:$dst),
+                         []>, Sched<[WriteJumpLd]>;
 }
 
 // Conditional tail calls are similar to the above, but they are branches

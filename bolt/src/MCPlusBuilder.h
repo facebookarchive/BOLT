@@ -1720,7 +1720,7 @@ public:
   }
 
   /// Remove meta-data, but don't destroy it.
-  void stripAnnotations(MCInst &Inst);
+  void stripAnnotations(MCInst &Inst, bool KeepTC = false);
 
   virtual std::vector<MCInst>
   createInstrumentedIndirectCall(const MCInst &CallInst, bool TailCall,
