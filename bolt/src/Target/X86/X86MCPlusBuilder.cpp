@@ -388,6 +388,14 @@ public:
                        const MCRegisterInfo *RegInfo)
     : MCPlusBuilder(Analysis, Info, RegInfo) {}
 
+  bool isBranch(const MCInst &Inst) const override {
+    return Analysis->isBranch(Inst) && !isTailCall(Inst);
+  }
+
+  bool isUnconditionalBranch(const MCInst &Inst) const override {
+    return Analysis->isUnconditionalBranch(Inst) && !isTailCall(Inst);
+  }
+
   bool isNoop(const MCInst &Inst) const override {
     switch (Inst.getOpcode()) {
     case X86::NOOP:
@@ -1968,12 +1976,9 @@ public:
   }
 
   bool isTailCall(const MCInst &Inst) const override {
-    switch (Inst.getOpcode()) {
-    case X86::TAILJMPd:
-    case X86::TAILJMPm:
-    case X86::TAILJMPr:
-      return true;
-    }
+    auto IsTCOrErr = tryGetAnnotationAs<bool>(Inst, "TC");
+    if (IsTCOrErr)
+      return *IsTCOrErr;
 
     if (getConditionalTailCall(Inst))
       return true;
@@ -1994,6 +1999,9 @@ public:
   }
 
   bool convertJmpToTailCall(MCInst &Inst) override {
+    if (isTailCall(Inst))
+      return false;
+
     int NewOpcode;
     switch (Inst.getOpcode()) {
     default:
@@ -2001,21 +2009,22 @@ public:
     case X86::JMP_1:
     case X86::JMP_2:
     case X86::JMP_4:
-      NewOpcode = X86::TAILJMPd;
+      NewOpcode = X86::JMP_4;
       break;
     case X86::JMP16m:
     case X86::JMP32m:
     case X86::JMP64m:
-      NewOpcode = X86::TAILJMPm;
+      NewOpcode = X86::JMP32m;
       break;
     case X86::JMP16r:
     case X86::JMP32r:
     case X86::JMP64r:
-      NewOpcode = X86::TAILJMPr;
+      NewOpcode = X86::JMP32r;
       break;
     }
 
     Inst.setOpcode(NewOpcode);
+    addAnnotation(Inst, "TC", true);
     return true;
   }
 
@@ -2024,18 +2033,20 @@ public:
     switch (Inst.getOpcode()) {
     default:
       return false;
-    case X86::TAILJMPd:
+    case X86::JMP_4:
       NewOpcode = X86::JMP_1;
       break;
-    case X86::TAILJMPm:
+    case X86::JMP32m:
       NewOpcode = X86::JMP64m;
       break;
-    case X86::TAILJMPr:
+    case X86::JMP32r:
       NewOpcode = X86::JMP64r;
       break;
     }
 
     Inst.setOpcode(NewOpcode);
+    removeAnnotation(Inst, "TC");
+    removeAnnotation(Inst, "Offset");
     return true;
   }
 
@@ -2044,30 +2055,32 @@ public:
     switch (Inst.getOpcode()) {
     default:
       return false;
-    case X86::TAILJMPd:
+    case X86::JMP_4:
       NewOpcode = X86::CALL64pcrel32;
       break;
-    case X86::TAILJMPm:
+    case X86::JMP32m:
       NewOpcode = X86::CALL64m;
       break;
-    case X86::TAILJMPr:
+    case X86::JMP32r:
       NewOpcode = X86::CALL64r;
       break;
     }
 
     Inst.setOpcode(NewOpcode);
+    removeAnnotation(Inst, "TC");
     return true;
   }
 
   bool convertCallToIndirectCall(MCInst &Inst,
                                  const MCSymbol *TargetLocation,
                                  MCContext *Ctx) override {
+    bool IsTailCall = isTailCall(Inst);
     assert((Inst.getOpcode() == X86::CALL64pcrel32 ||
-            Inst.getOpcode() == X86::TAILJMPd) &&
+            (Inst.getOpcode() == X86::JMP_4 && IsTailCall)) &&
            "64-bit direct (tail) call instruction expected");
     const auto NewOpcode = (Inst.getOpcode() == X86::CALL64pcrel32)
       ? X86::CALL64m
-      : X86::TAILJMPm;
+      : X86::JMP32m;
     Inst.setOpcode(NewOpcode);
 
     // Replace the first operand and preserve auxiliary operands of
@@ -2091,14 +2104,17 @@ public:
   }
 
   void convertIndirectCallToLoad(MCInst &Inst, MCPhysReg Reg) override {
+    bool IsTailCall = isTailCall(Inst);
+    if (IsTailCall)
+      removeAnnotation(Inst, "TC");
     if (Inst.getOpcode() == X86::CALL64m ||
-        Inst.getOpcode() == X86::TAILJMPm) {
+        (Inst.getOpcode() == X86::JMP32m && IsTailCall)) {
       Inst.setOpcode(X86::MOV64rm);
       Inst.insert(Inst.begin(), MCOperand::createReg(Reg));
       return;
     }
     if (Inst.getOpcode() == X86::CALL64r ||
-        Inst.getOpcode() == X86::TAILJMPr) {
+        (Inst.getOpcode() == X86::JMP32r && IsTailCall)) {
       Inst.setOpcode(X86::MOV64rr);
       Inst.insert(Inst.begin(), MCOperand::createReg(Reg));
       return;
@@ -2155,8 +2171,9 @@ public:
   }
 
   bool lowerTailCall(MCInst &Inst) override {
-    if (Inst.getOpcode() == X86::TAILJMPd) {
+    if (Inst.getOpcode() == X86::JMP_4 && isTailCall(Inst)) {
       Inst.setOpcode(X86::JMP_1);
+      removeAnnotation(Inst, "TC");
       return true;
     }
     return false;
@@ -2208,9 +2225,10 @@ public:
         break;
 
       // Handle unconditional branches.
-      if (I->getOpcode() == X86::JMP_1 ||
-          I->getOpcode() == X86::JMP_2 ||
-          I->getOpcode() == X86::JMP_4) {
+      if ((I->getOpcode() == X86::JMP_1 ||
+           I->getOpcode() == X86::JMP_2 ||
+           I->getOpcode() == X86::JMP_4) &&
+          !isTailCall(*I)) {
         // If any code was seen after this unconditional branch, we've seen
         // unreachable code. Ignore them.
         CondBranch = nullptr;
@@ -2947,7 +2965,7 @@ public:
 
   bool createIndirectCall(MCInst &Inst, const MCSymbol *TargetLocation,
                           MCContext *Ctx, bool IsTailCall) override {
-    Inst.setOpcode(IsTailCall ? X86::TAILJMPm : X86::CALL64m);
+    Inst.setOpcode(IsTailCall ? X86::JMP32m : X86::CALL64m);
     Inst.addOperand(MCOperand::createReg(X86::RIP));        // BaseReg
     Inst.addOperand(MCOperand::createImm(1));               // ScaleAmt
     Inst.addOperand(MCOperand::createReg(X86::NoRegister)); // IndexReg
@@ -2955,14 +2973,17 @@ public:
         MCSymbolRefExpr::create(TargetLocation, MCSymbolRefExpr::VK_None,
                                 *Ctx)));
     Inst.addOperand(MCOperand::createReg(X86::NoRegister)); // AddrSegmentReg
+    if (IsTailCall)
+      addAnnotation(Inst, "TC", true);
     return true;
   }
 
   bool createTailCall(MCInst &Inst, const MCSymbol *Target,
                       MCContext *Ctx) override {
-    Inst.setOpcode(X86::TAILJMPd);
+    Inst.setOpcode(X86::JMP_4);
     Inst.addOperand(MCOperand::createExpr(
         MCSymbolRefExpr::create(Target, MCSymbolRefExpr::VK_None, *Ctx)));
+    addAnnotation(Inst, "TC", true);
     return true;
   }
 
@@ -3073,7 +3094,7 @@ public:
 
   bool isBranchOnMem(const MCInst &Inst) const override {
     unsigned OpCode = Inst.getOpcode();
-    if (OpCode == X86::CALL64m || OpCode == X86::TAILJMPm ||
+    if (OpCode == X86::CALL64m || (OpCode == X86::JMP32m && isTailCall(Inst)) ||
         OpCode == X86::JMP64m)
       return true;
 
@@ -3082,7 +3103,7 @@ public:
 
   bool isBranchOnReg(const MCInst &Inst) const override {
     unsigned OpCode = Inst.getOpcode();
-    if (OpCode == X86::CALL64r || OpCode == X86::TAILJMPr ||
+    if (OpCode == X86::CALL64r || (OpCode == X86::JMP32r && isTailCall(Inst)) ||
         OpCode == X86::JMP64r)
       return true;
 
@@ -3207,6 +3228,9 @@ public:
       createStackPointerDecrement(Insts.back(), 8, /*NoFlagsClobber=*/false);
     }
     Insts.emplace_back(CallInst);
+    // Insts.back() and CallInst now share the same annotation instruction.
+    // Strip it from Insts.back(), only preserving tail call annotation.
+    stripAnnotations(Insts.back(), /*KeepTC=*/true);
     convertIndirectCallToLoad(Insts.back(), TempReg);
     if (UsesSP) {
       Insts.emplace_back();
@@ -3478,10 +3502,10 @@ public:
         CallOrJmp.clear();
 
         if (MinimizeCodeSize && !LoadElim) {
-          CallOrJmp.setOpcode(IsTailCall ? X86::TAILJMPr : X86::CALL64r);
+          CallOrJmp.setOpcode(IsTailCall ? X86::JMP32r : X86::CALL64r);
           CallOrJmp.addOperand(MCOperand::createReg(FuncAddrReg));
         } else {
-          CallOrJmp.setOpcode(IsTailCall ? X86::TAILJMPd : X86::CALL64pcrel32);
+          CallOrJmp.setOpcode(IsTailCall ? X86::JMP_4 : X86::CALL64pcrel32);
 
           if (Targets[i].first) {
             CallOrJmp.addOperand(MCOperand::createExpr(MCSymbolRefExpr::create(
@@ -3490,6 +3514,8 @@ public:
             CallOrJmp.addOperand(MCOperand::createImm(Targets[i].second));
           }
         }
+        if (IsTailCall)
+          addAnnotation(CallOrJmp, "TC", true);
 
         if (CallOrJmp.getOpcode() == X86::CALL64r ||
             CallOrJmp.getOpcode() == X86::CALL64pcrel32) {
