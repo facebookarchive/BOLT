@@ -340,7 +340,7 @@ Inliner::inlineCall(BinaryBasicBlock &CallerBB,
       if (MIB.isPseudo(Inst))
         continue;
 
-      MIB.stripAnnotations(Inst);
+      MIB.stripAnnotations(Inst, /*KeepTC=*/BC.isX86());
 
       // Fix branch target. Strictly speaking, we don't have to do this as
       // targets of direct branches will be fixed later and don't matter
