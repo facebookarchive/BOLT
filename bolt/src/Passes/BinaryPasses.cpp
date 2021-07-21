@@ -546,6 +546,13 @@ void LowerAnnotations::runOnFunctions(BinaryContext &BC) {
       }
     }
   }
+  for (BinaryFunction *BF : BC.getInjectedBinaryFunctions()) {
+    for (BinaryBasicBlock &BB : *BF) {
+      for (MCInst &Instruction : BB) {
+        BC.MIB->stripAnnotations(Instruction);
+      }
+    }
+  }
 
   // Release all memory taken by annotations
   BC.MIB->freeAnnotations();
