@@ -240,12 +240,16 @@ bool MCPlusBuilder::removeAnnotation(MCInst &Inst, unsigned Index) {
   return false;
 }
 
-void MCPlusBuilder::stripAnnotations(MCInst &Inst) {
+void MCPlusBuilder::stripAnnotations(MCInst &Inst, bool KeepTC) {
   MCInst *AnnotationInst = getAnnotationInst(Inst);
   if (!AnnotationInst)
     return;
+  // Preserve TailCall annotation.
+  auto IsTCOrErr = tryGetAnnotationAs<bool>(Inst, "TC");
 
   Inst.erase(std::prev(Inst.end()));
+  if (KeepTC && IsTCOrErr)
+    addAnnotation(Inst, "TC", *IsTCOrErr);
 }
 
 void

@@ -134,7 +134,7 @@ void BinaryFunction::postProcessProfile() {
       // function calls from the block.
       for (MCInst &Inst : *BB) {
         // Ignore non-call instruction
-        if (!BC.MIA->isCall(Inst))
+        if (!BC.MIB->isCall(Inst))
           continue;
 
         auto CountAnnt = BC.MIB->tryGetAnnotationAs<uint64_t>(Inst, "Count");
