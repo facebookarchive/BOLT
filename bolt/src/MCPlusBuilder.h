@@ -1213,7 +1213,7 @@ public:
   }
 
   /// Replace instruction opcode to be a regural call instead of tail call.
-  virtual bool convertTailCallToCall(MCInst &Inst) const {
+  virtual bool convertTailCallToCall(MCInst &Inst) {
     llvm_unreachable("not implemented");
     return false;
   }
@@ -1222,13 +1222,13 @@ public:
   /// a destination from a memory location pointed by \p TargetLocation symbol.
   virtual bool convertCallToIndirectCall(MCInst &Inst,
                                          const MCSymbol *TargetLocation,
-                                         MCContext *Ctx) const {
+                                         MCContext *Ctx) {
     llvm_unreachable("not implemented");
     return false;
   }
 
   /// Morph an indirect call into a load where \p Reg holds the call target.
-  virtual void convertIndirectCallToLoad(MCInst &Inst, MCPhysReg Reg) const {
+  virtual void convertIndirectCallToLoad(MCInst &Inst, MCPhysReg Reg) {
     llvm_unreachable("not implemented");
   }
 
@@ -1364,7 +1364,7 @@ public:
   }
 
   virtual bool createIndirectCall(MCInst &Inst, const MCSymbol *TargetLocation,
-                                  MCContext *Ctx, bool IsTailCall) const {
+                                  MCContext *Ctx, bool IsTailCall) {
     llvm_unreachable("not implemented");
     return false;
   }
@@ -1725,7 +1725,7 @@ public:
   virtual std::vector<MCInst>
   createInstrumentedIndirectCall(const MCInst &CallInst, bool TailCall,
                                  MCSymbol *HandlerFuncAddr, int CallSiteID,
-                                 MCContext *Ctx) const {
+                                 MCContext *Ctx) {
     llvm_unreachable("not implemented");
     return std::vector<MCInst>();
   }
