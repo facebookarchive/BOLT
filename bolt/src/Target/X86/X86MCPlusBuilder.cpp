@@ -2039,7 +2039,7 @@ public:
     return true;
   }
 
-  bool convertTailCallToCall(MCInst &Inst) const override {
+  bool convertTailCallToCall(MCInst &Inst) override {
     int NewOpcode;
     switch (Inst.getOpcode()) {
     default:
@@ -2061,7 +2061,7 @@ public:
 
   bool convertCallToIndirectCall(MCInst &Inst,
                                  const MCSymbol *TargetLocation,
-                                 MCContext *Ctx) const override {
+                                 MCContext *Ctx) override {
     assert((Inst.getOpcode() == X86::CALL64pcrel32 ||
             Inst.getOpcode() == X86::TAILJMPd) &&
            "64-bit direct (tail) call instruction expected");
@@ -2090,7 +2090,7 @@ public:
     return true;
   }
 
-  void convertIndirectCallToLoad(MCInst &Inst, MCPhysReg Reg) const override {
+  void convertIndirectCallToLoad(MCInst &Inst, MCPhysReg Reg) override {
     if (Inst.getOpcode() == X86::CALL64m ||
         Inst.getOpcode() == X86::TAILJMPm) {
       Inst.setOpcode(X86::MOV64rm);
@@ -2946,7 +2946,7 @@ public:
   }
 
   bool createIndirectCall(MCInst &Inst, const MCSymbol *TargetLocation,
-                          MCContext *Ctx, bool IsTailCall) const override {
+                          MCContext *Ctx, bool IsTailCall) override {
     Inst.setOpcode(IsTailCall ? X86::TAILJMPm : X86::CALL64m);
     Inst.addOperand(MCOperand::createReg(X86::RIP));        // BaseReg
     Inst.addOperand(MCOperand::createImm(1));               // ScaleAmt
@@ -3174,7 +3174,7 @@ public:
   std::vector<MCInst>
   createInstrumentedIndirectCall(const MCInst &CallInst, bool TailCall,
                                  MCSymbol *HandlerFuncAddr, int CallSiteID,
-                                 MCContext *Ctx) const override {
+                                 MCContext *Ctx) override {
     // Check if the target address expression used in the original indirect call
     // uses the stack pointer, which we are going to clobber.
     static BitVector SPAliases(getAliases(X86::RSP));
