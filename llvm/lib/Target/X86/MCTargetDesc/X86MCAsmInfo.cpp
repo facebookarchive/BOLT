@@ -45,8 +45,6 @@ X86MCAsmInfoDarwin::X86MCAsmInfoDarwin(const Triple &T) {
 
   TextAlignFillValue = 0x90;
 
-  TrapFillValue = 0xCC;
-
   if (!is64Bit)
     Data64bitsDirective = nullptr;       // we can't emit a 64-bit unit
 
@@ -97,8 +95,6 @@ X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
 
   TextAlignFillValue = 0x90;
 
-  TrapFillValue = 0xCC;
-
   // Debug Information
   SupportsDebugInformation = true;
 
@@ -138,8 +134,6 @@ X86MCAsmInfoMicrosoft::X86MCAsmInfoMicrosoft(const Triple &Triple) {
 
   TextAlignFillValue = 0x90;
 
-  TrapFillValue = 0xCC;
-
   AllowAtInName = true;
 }
 
@@ -173,8 +167,6 @@ X86MCAsmInfoGNUCOFF::X86MCAsmInfoGNUCOFF(const Triple &Triple) {
   AssemblerDialect = AsmWriterFlavor;
 
   TextAlignFillValue = 0x90;
-
-  TrapFillValue = 0xCC;
 
   AllowAtInName = true;
 }

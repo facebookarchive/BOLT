@@ -650,6 +650,8 @@ public:
             Inst.getOperand(2).getReg());
   }
 
+  unsigned getTrapFillValue() const override { return 0xCC; }
+
   struct IndJmpMatcherFrag1 : MCInstMatcher {
     std::unique_ptr<MCInstMatcher> Base;
     std::unique_ptr<MCInstMatcher> Scale;
