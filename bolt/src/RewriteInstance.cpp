@@ -5259,8 +5259,7 @@ void RewriteInstance::rewriteFile() {
         continue;
       OS.seek(BF.getFileOffset());
       for (unsigned I = 0; I < BF.getMaxSize(); ++I)
-        OS.write((unsigned char)
-            Streamer->getContext().getAsmInfo()->getTrapFillValue());
+        OS.write((unsigned char)BC->MIB->getTrapFillValue());
     }
     OS.seek(SavedPos);
   }

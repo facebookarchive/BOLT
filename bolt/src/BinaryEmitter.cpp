@@ -361,7 +361,7 @@ bool BinaryEmitter::emitFunction(BinaryFunction &Function, bool EmitColdPart) {
   }
 
   if (opts::MarkFuncs) {
-    Streamer.emitIntValue(MAI->getTrapFillValue(), 1);
+    Streamer.emitIntValue(BC.MIB->getTrapFillValue(), 1);
   }
 
   // Emit CFI end
