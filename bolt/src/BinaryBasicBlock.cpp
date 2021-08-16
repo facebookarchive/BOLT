@@ -292,7 +292,7 @@ void BinaryBasicBlock::replaceSuccessor(BinaryBasicBlock *Succ,
 
 void BinaryBasicBlock::removeAllSuccessors() {
   for (BinaryBasicBlock *SuccessorBB : successors()) {
-    SuccessorBB->removePredecessor(this);
+    SuccessorBB->removePredecessor(this, /*Multiple=*/false);
   }
   Successors.clear();
   BranchInfo.clear();
