@@ -5,7 +5,8 @@ ENV TZ=UTC
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates git \
-      build-essential cmake ninja-build python3 libjemalloc-dev && \
+      build-essential cmake ninja-build python3 libjemalloc-dev \
+      python3-psutil && \
     rm -rf /var/lib/apt/lists
 
 WORKDIR /home/bolt
