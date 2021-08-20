@@ -1508,8 +1508,6 @@ void RewriteInstance::adjustFunctionBoundaries() {
 void RewriteInstance::relocateEHFrameSection() {
   assert(EHFrameSection && "non-empty .eh_frame section expected");
 
-  DWARFDebugFrame EHFrame(BC->TheTriple->getArch(), true,
-                          EHFrameSection->getAddress());
   DWARFDataExtractor DE(EHFrameSection->getContents(),
                         BC->AsmInfo->isLittleEndian(),
                         BC->AsmInfo->getCodePointerSize());
@@ -1550,8 +1548,9 @@ void RewriteInstance::relocateEHFrameSection() {
     EHFrameSection->addRelocation(Offset, nullptr, RelType, Value);
   };
 
-  Error E = EHFrame.parse(DE, createReloc);
-  check_error(std::move(E), "failed to parse EH frame");
+  Error E =
+      EHFrameParser::parse(DE, EHFrameSection->getAddress(), createReloc);
+  check_error(std::move(E), "failed to patch EH frame");
 }
 
 ArrayRef<uint8_t> RewriteInstance::getLSDAData() {
