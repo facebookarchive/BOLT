@@ -686,20 +686,9 @@ public:
   void dump(raw_ostream &OS, DIDumpOptions DumpOpts, const MCRegisterInfo *MRI,
             Optional<uint64_t> Offset) const;
 
-  using RefHandlerType =
-    std::function<void(uint64_t, uint64_t, uint64_t)>;
-
   /// Parse the section from raw data. \p Data is assumed to contain the whole
   /// frame section contents to be parsed.
-  /// If non-null RefHandler is passed, call it for every encountered external
-  /// reference in frame data. The expected signature is:
-  ///
-  ///   void RefHandler(uint64_t Value, uint64_t Offset, uint64_t Type);
-  ///
-  /// where Value is a value of the reference, Offset - is an offset into the
-  /// frame data at which the reference occured, and Type is a DWARF encoding
-  /// type of the reference.
-  Error parse(DWARFDataExtractor Data, RefHandlerType RefHandler= nullptr);
+  Error parse(DWARFDataExtractor Data);
 
   /// Return whether the section has any entries.
   bool empty() const { return Entries.empty(); }

@@ -778,5 +778,143 @@ std::vector<char> CFIReaderWriter::generateEHFrameHeader(
   return EHFrameHeader;
 }
 
+Error EHFrameParser::parseCIE(uint64_t StartOffset) {
+  uint8_t Version = Data.getU8(&Offset);
+  const char *Augmentation = Data.getCStr(&Offset);
+  StringRef AugmentationString(Augmentation ? Augmentation : "");
+  uint8_t AddressSize =
+      Version < 4 ? Data.getAddressSize() : Data.getU8(&Offset);
+  Data.setAddressSize(AddressSize);
+  // Skip segment descriptor size
+  if (Version >= 4)
+    Offset += 1;
+  // Skip code alignment factor
+  Data.getULEB128(&Offset);
+  // Skip data alignment
+  Data.getSLEB128(&Offset);
+  // Skip return address register
+  if (Version == 1) {
+    Offset += 1;
+  } else {
+    Data.getULEB128(&Offset);
+  }
+
+  uint32_t FDEPointerEncoding = DW_EH_PE_absptr;
+  uint32_t LSDAPointerEncoding = DW_EH_PE_omit;
+  // Walk the augmentation string to get all the augmentation data.
+  for (unsigned i = 0, e = AugmentationString.size(); i != e; ++i) {
+    switch (AugmentationString[i]) {
+    default:
+      return createStringError(
+          errc::invalid_argument,
+          "unknown augmentation character in entry at 0x%" PRIx64, StartOffset);
+    case 'L':
+      LSDAPointerEncoding = Data.getU8(&Offset);
+      break;
+    case 'P': {
+      uint32_t PersonalityEncoding = Data.getU8(&Offset);
+      Optional<uint64_t> Personality =
+          Data.getEncodedPointer(&Offset, PersonalityEncoding,
+                                 EHFrameAddress ? EHFrameAddress + Offset : 0);
+      // Patch personality address
+      if (Personality)
+        PatcherCallback(*Personality, Offset, PersonalityEncoding);
+      break;
+    }
+    case 'R':
+      FDEPointerEncoding = Data.getU8(&Offset);
+      break;
+    case 'z':
+      if (i)
+        return createStringError(
+            errc::invalid_argument,
+            "'z' must be the first character at 0x%" PRIx64, StartOffset);
+      // Skip augmentation length
+      Data.getULEB128(&Offset);
+      break;
+    case 'S':
+    case 'B':
+      break;
+    }
+  }
+  Entries.emplace_back(std::make_unique<CIEInfo>(
+      FDEPointerEncoding, LSDAPointerEncoding, AugmentationString));
+  CIEs[StartOffset] = &*Entries.back();
+  return Error::success();
+}
+
+Error EHFrameParser::parseFDE(uint64_t CIEPointer,
+                               uint64_t StartStructureOffset) {
+  Optional<uint64_t> LSDAAddress;
+  CIEInfo *Cie = CIEs[StartStructureOffset - CIEPointer];
+
+  // The address size is encoded in the CIE we reference.
+  if (!Cie)
+    return createStringError(errc::invalid_argument,
+                             "parsing FDE data at 0x%" PRIx64
+                             " failed due to missing CIE",
+                             StartStructureOffset);
+  // Patch initial location
+  if (auto Val = Data.getEncodedPointer(&Offset, Cie->FDEPtrEncoding,
+                                        EHFrameAddress + Offset)) {
+    PatcherCallback(*Val, Offset, Cie->FDEPtrEncoding);
+  }
+  // Skip address range
+  Data.getEncodedPointer(&Offset, Cie->FDEPtrEncoding, 0);
+
+  // Process augmentation data for this FDE.
+  StringRef AugmentationString = Cie->AugmentationString;
+  if (!AugmentationString.empty() && Cie->LSDAPtrEncoding != DW_EH_PE_omit) {
+    // Skip augmentation length
+    Data.getULEB128(&Offset);
+    LSDAAddress =
+        Data.getEncodedPointer(&Offset, Cie->LSDAPtrEncoding,
+                               EHFrameAddress ? Offset + EHFrameAddress : 0);
+    // Patch LSDA address
+    PatcherCallback(*LSDAAddress, Offset, Cie->LSDAPtrEncoding);
+  }
+  return Error::success();
+}
+
+Error EHFrameParser::parse() {
+  while (Data.isValidOffset(Offset)) {
+    const uint64_t StartOffset = Offset;
+
+    uint64_t Length;
+    DwarfFormat Format;
+    std::tie(Length, Format) = Data.getInitialLength(&Offset);
+
+    // If the Length is 0, then this CIE is a terminator
+    if (Length == 0)
+      break;
+
+    const uint64_t StartStructureOffset = Offset;
+    const uint64_t EndStructureOffset = Offset + Length;
+
+    Error Err = Error::success();
+    const uint64_t Id = Data.getRelocatedValue(4, &Offset,
+                                               /*SectionIndex=*/nullptr, &Err);
+    if (Err)
+      return Err;
+
+    if (!Id) {
+      if (Error Err = parseCIE(StartOffset))
+        return Err;
+    } else {
+      if (Error Err = parseFDE(Id, StartStructureOffset))
+        return Err;
+    }
+    Offset = EndStructureOffset;
+  }
+
+  return Error::success();
+}
+
+Error EHFrameParser::parse(DWARFDataExtractor Data, uint64_t EHFrameAddress,
+                            PatcherCallbackTy PatcherCallback) {
+  EHFrameParser Parser(Data, EHFrameAddress, PatcherCallback);
+  return Parser.parse();
+}
+
 } // namespace bolt
 } // namespace llvm
