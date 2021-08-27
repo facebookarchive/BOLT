@@ -149,8 +149,28 @@ public:
   /// \returns Optional DWARF form value if the attribute was extracted.
   Optional<DWARFFormValue> getAttributeValue(const uint64_t DIEOffset,
                                              const dwarf::Attribute Attr,
-                                             const DWARFUnit &U,
-                                             uint64_t *OffsetPtr = 0) const;
+                                             const DWARFUnit &U) const;
+
+  /// Compute an offset from a DIE specified by DIE offset and attribute index.
+  ///
+  /// \param AttrIndex an index of DWARF attribute.
+  /// \param DIEOffset the DIE offset that points to the ULEB128 abbreviation
+  /// code in the .debug_info data.
+  /// \param U the DWARFUnit the contains the DIE.
+  /// \returns an offset of the attribute.
+  uint64_t getAttributeOffsetFromIndex(uint32_t AttrIndex, uint64_t DIEOffset,
+                                       const DWARFUnit &U) const;
+
+  /// Extract a DWARF form value from a DIE speccified by attribute index and
+  /// its offset.
+  ///
+  /// \param AttrIndex an index of DWARF attribute.
+  /// \param Offset offset of the attribute.
+  /// \param U the DWARFUnit the contains the DIE.
+  /// \returns Optional DWARF form value if the attribute was extracted.
+  Optional<DWARFFormValue>
+  getAttributeValueFromOffset(uint32_t AttrIndex, uint64_t Offset,
+                              const DWARFUnit &U) const;
 
   bool extract(DataExtractor Data, uint64_t* OffsetPtr);
   void dump(raw_ostream &OS) const;

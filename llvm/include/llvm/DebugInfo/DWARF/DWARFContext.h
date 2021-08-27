@@ -350,10 +350,6 @@ public:
   ///       into "SectionedAddress Address"
   DIEsForAddress getDIEsForAddress(uint64_t Address);
 
-  /// Get offset to an attribute value within a compile unit
-  /// or 0 if the attribute was not found.
-  uint64_t getAttrFieldOffsetForUnit(DWARFUnit *U, dwarf::Attribute Attr) const;
-
   DILineInfo getLineInfoForAddress(
       object::SectionedAddress Address,
       DILineInfoSpecifier Specifier = DILineInfoSpecifier()) override;

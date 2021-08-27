@@ -1368,19 +1368,6 @@ DWARFContext::getInliningInfoForAddress(object::SectionedAddress Address,
   return InliningInfo;
 }
 
-uint64_t DWARFContext::getAttrFieldOffsetForUnit(DWARFUnit *U,
-                                                 dwarf::Attribute Attr) const {
-  const auto UnitDIE = U->getUnitDIE();
-  if (!UnitDIE)
-    return 0;
-
-  uint64_t Offset = 0;
-  if (!UnitDIE.find(Attr, &Offset))
-    return 0;
-
-  return Offset;
-}
-
 std::shared_ptr<DWARFContext>
 DWARFContext::getDWOContext(StringRef AbsolutePath) {
   if (auto S = DWP.lock()) {

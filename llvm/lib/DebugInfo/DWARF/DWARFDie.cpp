@@ -342,13 +342,12 @@ bool DWARFDie::isSubroutineDIE() const {
   return Tag == DW_TAG_subprogram || Tag == DW_TAG_inlined_subroutine;
 }
 
-Optional<DWARFFormValue> DWARFDie::find(dwarf::Attribute Attr,
-                                        uint64_t *OffsetPtr) const {
+Optional<DWARFFormValue> DWARFDie::find(dwarf::Attribute Attr) const {
   if (!isValid())
     return None;
   auto AbbrevDecl = getAbbreviationDeclarationPtr();
   if (AbbrevDecl)
-    return AbbrevDecl->getAttributeValue(getOffset(), Attr, *U, OffsetPtr);
+    return AbbrevDecl->getAttributeValue(getOffset(), Attr, *U);
   return None;
 }
 

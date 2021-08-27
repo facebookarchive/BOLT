@@ -139,8 +139,7 @@ public:
   /// \param Attr the attribute to extract.
   /// \returns an optional DWARFFormValue that will have the form value if the
   /// attribute was successfully extracted.
-  Optional<DWARFFormValue> find(dwarf::Attribute Attr,
-                                uint64_t *OffsetPtr = 0) const;
+  Optional<DWARFFormValue> find(dwarf::Attribute Attr) const;
 
   /// Extract the first value of any attribute in Attrs from this DIE.
   ///
