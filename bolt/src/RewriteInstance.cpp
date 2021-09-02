@@ -1898,6 +1898,8 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
   if (Relocation::isGOT(RType)) {
     Addend = 0;
     SymbolAddress = ExtractedValue + PCRelOffset;
+  } else if (Relocation::isTLS(RType)) {
+    SkipVerification = true;
   } else if (!SymbolAddress) {
     assert(!IsSectionRelocation);
     if (ExtractedValue || Addend == 0 || IsPCRelative) {
@@ -1924,9 +1926,6 @@ bool RewriteInstance::analyzeRelocation(const RelocationRef &Rel,
       return true;
 
     if (SymbolName == "__hot_start" || SymbolName == "__hot_end")
-      return true;
-
-    if (Relocation::isTLS(RType))
       return true;
 
     if (RType == ELF::R_X86_64_PLT32)
@@ -2316,9 +2315,15 @@ void RewriteInstance::readRelocations(const SectionRef &Section) {
       RType &= ~ELF::R_X86_64_converted_reloc_bit;
     }
 
-    // No special handling required for TLS relocations on X86.
-    if (Relocation::isTLS(RType) && BC->isX86())
-      continue;
+    if (Relocation::isTLS(RType)) {
+      // No special handling required for TLS relocations on X86.
+      if (BC->isX86())
+        continue;
+
+      // The non-got related TLS relocations on AArch64 also could be skipped.
+      if (!Relocation::isGOT(RType))
+        continue;
+    }
 
     if (BC->getDynamicRelocationAt(Rel.getOffset())) {
       LLVM_DEBUG(
@@ -2397,16 +2402,17 @@ void RewriteInstance::readRelocations(const SectionRef &Section) {
     }
 
     bool ForceRelocation = BC->forceSymbolRelocations(SymbolName);
-
-    if (BC->isAArch64() && RType == ELF::R_AARCH64_ADR_GOT_PAGE)
-      ForceRelocation = true;
-
     ErrorOr<BinarySection &> RefSection =
-        BC->getSectionForAddress(SymbolAddress);
-    if (!RefSection && !ForceRelocation) {
-      LLVM_DEBUG(
-          dbgs() << "BOLT-DEBUG: cannot determine referenced section.\n");
-      continue;
+        std::make_error_code(std::errc::bad_address);
+    if (BC->isAArch64() && Relocation::isGOT(RType)) {
+      ForceRelocation = true;
+    } else {
+      RefSection = BC->getSectionForAddress(SymbolAddress);
+      if (!RefSection && !ForceRelocation) {
+        LLVM_DEBUG(
+            dbgs() << "BOLT-DEBUG: cannot determine referenced section.\n");
+        continue;
+      }
     }
 
     const bool IsToCode = RefSection && RefSection->isText();
