@@ -27,15 +27,12 @@ class raw_ostream;
 class DWARFAbbreviationDeclaration {
 public:
   struct AttributeSpec {
-    AttributeSpec(dwarf::Attribute A, dwarf::Form F, int64_t Value,
-                  uint32_t AttrOffset = -1U, uint32_t FormOffset = -1U)
-        : Attr(A), Form(F), AttrOffset(AttrOffset), FormOffset(FormOffset),
-          Value(Value) {
+    AttributeSpec(dwarf::Attribute A, dwarf::Form F, int64_t Value)
+        : Attr(A), Form(F), Value(Value) {
       assert(isImplicitConst());
     }
-    AttributeSpec(dwarf::Attribute A, dwarf::Form F, Optional<uint8_t> ByteSize,
-                  uint32_t AttrOffset = -1U, uint32_t FormOffset = -1U)
-        : Attr(A), Form(F), AttrOffset(AttrOffset), FormOffset(FormOffset) {
+    AttributeSpec(dwarf::Attribute A, dwarf::Form F, Optional<uint8_t> ByteSize)
+        : Attr(A), Form(F) {
       assert(!isImplicitConst());
       this->ByteSize.HasByteSize = ByteSize.hasValue();
       if (this->ByteSize.HasByteSize)
@@ -44,8 +41,6 @@ public:
 
     dwarf::Attribute Attr;
     dwarf::Form Form;
-    uint32_t AttrOffset;
-    uint32_t FormOffset;
 
   private:
     /// The following field is used for ByteSize for non-implicit_const

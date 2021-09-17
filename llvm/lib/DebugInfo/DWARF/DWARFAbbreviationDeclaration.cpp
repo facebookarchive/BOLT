@@ -60,15 +60,13 @@ DWARFAbbreviationDeclaration::extract(DataExtractor Data,
 
   // Read all of the abbreviation attributes and forms.
   while (true) {
-    uint32_t AOff = *OffsetPtr;
     auto A = static_cast<Attribute>(Data.getULEB128(OffsetPtr));
-    uint32_t FOff = *OffsetPtr;
     auto F = static_cast<Form>(Data.getULEB128(OffsetPtr));
     if (A && F) {
       bool IsImplicitConst = (F == DW_FORM_implicit_const);
       if (IsImplicitConst) {
         int64_t V = Data.getSLEB128(OffsetPtr);
-        AttributeSpecs.push_back(AttributeSpec(A, F, V, AOff, FOff));
+        AttributeSpecs.push_back(AttributeSpec(A, F, V));
         continue;
       }
       Optional<uint8_t> ByteSize;
@@ -110,7 +108,7 @@ DWARFAbbreviationDeclaration::extract(DataExtractor Data,
         break;
       }
       // Record this attribute and its fixed size if it has one.
-      AttributeSpecs.push_back(AttributeSpec(A, F, ByteSize, AOff, FOff));
+      AttributeSpecs.push_back(AttributeSpec(A, F, ByteSize));
     } else if (A == 0 && F == 0) {
       // We successfully reached the end of this abbreviation declaration
       // since both attribute and form are zero.
