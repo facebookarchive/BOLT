@@ -192,12 +192,12 @@ builds. E.g. `TOPLEV=~/clang-7/`. Follow with commands to clone the `release_70`
 of LLVM, Clang, lld linker, and the compiler runtime:
 ```bash
 $ cd ${TOPLEV}
-$ git clone -q --depth=1 --branch=release_70 https://git.llvm.org/git/llvm.git/ llvm
+$ git clone -q --depth=1 --branch=release_70 https://github.com/llvm-mirror/llvm llvm
 $ cd llvm/tools
-$ git clone -q --depth=1 --branch=release_70 https://git.llvm.org/git/clang.git/
+$ git clone -q --depth=1 --branch=release_70 https://github.com/llvm-mirror/clang
 $ cd ../projects
-$ git clone -q --depth=1 --branch=release_70 https://git.llvm.org/git/lld.git/
-$ git clone -q --depth=1 --branch=release_70 https://git.llvm.org/git/compiler-rt.git/
+$ git clone -q --depth=1 --branch=release_70 https://github.com/llvm-mirror/lld
+$ git clone -q --depth=1 --branch=release_70 https://github.com/llvm-mirror/compiler-rt
 ```
 
 ### Building Stage 1 Compiler
