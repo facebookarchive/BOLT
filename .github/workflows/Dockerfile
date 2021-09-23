@@ -16,7 +16,7 @@ COPY . llvm-bolt
 WORKDIR build
 
 RUN cmake -G Ninja ../llvm-bolt/llvm \
-      -DLLVM_ENABLE_PROJECTS="bolt" \
+      -DLLVM_ENABLE_PROJECTS="bolt;clang;lld" \
       -DLLVM_TARGETS_TO_BUILD="X86;AArch64" \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_ENABLE_ASSERTIONS=ON \
