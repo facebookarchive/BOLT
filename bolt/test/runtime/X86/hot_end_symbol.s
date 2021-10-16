@@ -9,7 +9,7 @@
 # RUN:   %s -o %t.o
 # RUN: link_fdata %s %t.o %t.fdata
 # RUN: llvm-strip --strip-unneeded %t.o
-# RUN: %clang %cflags %t.o -o %t.exe -Wl,-q
+# RUN: %clang %cflags -nostartfiles %t.o -o %t.exe -Wl,-q
 
 # RUN: llvm-bolt %t.exe -relocs=1 -hot-text -reorder-functions=hfsort \
 # RUN:    -data %t.fdata -o %t.out | FileCheck %s
@@ -32,6 +32,16 @@
 # CHECK-OUTPUT-NEXT:  __hot_end
 
   .text
+  .globl  _start
+  .type _start, %function
+_start:
+  lea    0x8(%rsp),%rsi
+  mov    (%rsp),%rdi
+  callq main
+  mov %eax, %edi
+  callq exit
+  .size _start, .-_start
+
   .globl  main
   .type main, %function
   .globl  __hot_start

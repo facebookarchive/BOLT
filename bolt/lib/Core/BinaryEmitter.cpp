@@ -163,6 +163,12 @@ private:
   /// Emit exception handling ranges for the function.
   void emitLSDA(BinaryFunction &BF, bool EmitColdPart);
 
+  /// Emit single end label
+  void emitEndLabel(BinaryFunction &BF);
+
+  /// Emit labels that were originally placed after text section
+  void emitEndLabels();
+
   /// Emit line number information corresponding to \p NewLoc. \p PrevLoc
   /// provides a context for de-duplication of line number info.
   /// \p FirstInstr indicates if \p NewLoc represents the first instruction
@@ -212,6 +218,8 @@ void BinaryEmitter::emitAll(StringRef OrgSecPrefix) {
   BC.getTextSection()->setAlignment(Align(opts::AlignText));
 
   emitFunctions();
+
+  emitEndLabels();
 
   if (opts::UpdateDebugSections) {
     emitDebugLineInfoForOriginalFunctions();
@@ -278,8 +286,17 @@ void BinaryEmitter::emitFunctions() {
 }
 
 bool BinaryEmitter::emitFunction(BinaryFunction &Function, bool EmitColdPart) {
-  if (Function.size() == 0)
+  if (Function.size() == 0) {
+    // Special case when the end label is not at the end of a section anymore
+    // e.g. runtime.etext must separate the end of golang functions and
+    // injected functions, so we set valid index for this label
+    if (Function.isEndLabel() && Function.hasValidIndex()) {
+      emitEndLabel(Function);
+      return true;
+    }
+
     return false;
+  }
 
   if (Function.getState() == BinaryFunction::State::Empty)
     return false;
@@ -1045,6 +1062,33 @@ void BinaryEmitter::emitLSDA(BinaryFunction &BF, bool EmitColdPart) {
   }
   for (uint8_t const &Byte : BF.getLSDATypeIndexTable()) {
     Streamer.emitIntValue(Byte, 1);
+  }
+}
+
+void BinaryEmitter::emitEndLabel(BinaryFunction &BF) {
+  assert(BF.isEndLabel() && "Function is not end label");
+  MCSection *Section = BC.getCodeSection(BF.getCodeSectionName());
+  Streamer.SwitchSection(Section);
+  for (MCSymbol *Symbol : BF.getSymbols()) {
+    Streamer.emitSymbolAttribute(Symbol, MCSA_ELF_TypeFunction);
+    Streamer.emitLabel(Symbol);
+  }
+
+  MCSymbol *EndSymbol = BF.getFunctionEndLabel();
+  Streamer.emitLabel(EndSymbol);
+}
+
+void BinaryEmitter::emitEndLabels() {
+  for (auto &It : BC.getBinaryFunctions()) {
+    BinaryFunction &Function = It.second;
+    if (Function.isEmitted())
+      continue;
+
+    if (!Function.isEndLabel())
+      continue;
+
+    emitEndLabel(Function);
+    Function.setEmitted();
   }
 }
 

@@ -266,6 +266,9 @@ private:
   /// Pseudo functions should not be disassembled or emitted.
   bool IsPseudo{false};
 
+  /// The function is out-of-section end label
+  bool IsEndLabel{false};
+
   /// True if the original function code has all necessary relocations to track
   /// addresses of functions emitted to new locations. Typically set for
   /// functions that we are not going to emit.
@@ -1444,6 +1447,11 @@ public:
     return IsPseudo;
   }
 
+  /// Retrun true if the function is out-of-section end label
+  bool isEndLabel() const {
+    return IsEndLabel;
+  }
+
   /// Return true if the function contains a jump table with entries pointing
   /// to split fragments.
   bool hasSplitJumpTable() const {
@@ -1919,6 +1927,10 @@ public:
 
   void setPseudo(bool Pseudo) {
     IsPseudo = Pseudo;
+  }
+
+  void setEndLabel(bool Label) {
+    IsEndLabel = Label;
   }
 
   BinaryFunction &setUsesGnuArgsSize(bool Uses = true) {

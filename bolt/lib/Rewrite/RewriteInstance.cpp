@@ -1124,6 +1124,14 @@ void RewriteInstance::discoverFileObjects() {
       BF->addAlternativeName(UniqueName);
     } else {
       ErrorOr<BinarySection &> Section = BC->getSectionForAddress(Address);
+
+      // The end of section symbol
+      bool IsEndLabel = false;
+      if (!Section && !SymbolSize) {
+        IsEndLabel = true;
+        Section = BC->getSectionForAddress(Address - 1);
+      }
+
       // Skip symbols from invalid sections
       if (!Section) {
         errs() << "BOLT-WARNING: " << UniqueName << " (0x"
@@ -1138,8 +1146,8 @@ void RewriteInstance::discoverFileObjects() {
         continue;
 
       BF = BC->createBinaryFunction(UniqueName, *Section, Address, SymbolSize);
-      if (!IsSimple)
-        BF->setSimple(false);
+      BF->setSimple(IsSimple);
+      BF->setEndLabel(IsEndLabel);
     }
     if (!AlternativeName.empty())
       BF->addAlternativeName(AlternativeName);
@@ -2718,17 +2726,17 @@ void RewriteInstance::disassembleFunctions() {
   for (auto &BFI : BC->getBinaryFunctions()) {
     BinaryFunction &Function = BFI.second;
 
+    // Treat zero-sized functions as non-simple ones.
+    if (Function.getSize() == 0) {
+      Function.setSimple(false);
+      continue;
+    }
+
     ErrorOr<ArrayRef<uint8_t>> FunctionData = Function.getData();
     if (!FunctionData) {
       errs() << "BOLT-ERROR: corresponding section is non-executable or "
              << "empty for function " << Function << '\n';
       exit(1);
-    }
-
-    // Treat zero-sized functions as non-simple ones.
-    if (Function.getSize() == 0) {
-      Function.setSimple(false);
-      continue;
     }
 
     // Offset of the function in the file.
