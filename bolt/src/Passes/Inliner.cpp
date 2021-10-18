@@ -105,12 +105,10 @@ InlineSmallFunctionsBytes("inline-small-functions-bytes",
   cl::Hidden,
   cl::cat(BoltOptCategory));
 
-static cl::opt<bool>
-NoInline("no-inline",
-  cl::desc("disable all inlining (overrides other inlining options)"),
-  cl::init(false),
-  cl::ZeroOrMore,
-  cl::cat(BoltOptCategory));
+cl::opt<bool> NoInline(
+    "no-inline",
+    cl::desc("disable all inlining (overrides other inlining options)"),
+    cl::init(false), cl::ZeroOrMore, cl::cat(BoltOptCategory));
 
 /// This function returns true if any of inlining options are specified and the
 /// inlining pass should be executed. Whenever a new inlining option is added,

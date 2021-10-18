@@ -52,6 +52,8 @@ const char* dynoStatsOptDesc(const bolt::DynoStats::Category C) {
 
 namespace opts {
 
+extern cl::opt<bool> NoInline;
+
 extern cl::OptionCategory BoltCategory;
 extern cl::OptionCategory BoltOptCategory;
 
@@ -1585,7 +1587,7 @@ void StripRepRet::runOnFunctions(BinaryContext &BC) {
 }
 
 void InlineMemcpy::runOnFunctions(BinaryContext &BC) {
-  if (!BC.isX86())
+  if (!BC.isX86() || opts::NoInline)
     return;
 
   uint64_t NumInlined = 0;
