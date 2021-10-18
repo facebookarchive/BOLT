@@ -1332,10 +1332,6 @@ bool BinaryFunction::disassemble() {
       }
     }
 
-    // Convert instruction to a shorter version that could be relaxed if
-    // needed.
-    MIB->shortenInstruction(Instruction);
-
     if (MIB->isBranch(Instruction) || MIB->isCall(Instruction)) {
       uint64_t TargetAddress = 0;
       if (MIB->evaluateBranch(Instruction, AbsoluteInstrAddr, Size,
@@ -1435,6 +1431,14 @@ add_instruction:
     // Record offset of the instruction for profile matching.
     if (BC.keepOffsetForInstruction(Instruction)) {
       MIB->addAnnotation(Instruction, "Offset", static_cast<uint32_t>(Offset));
+    }
+
+    if (BC.MIB->isNoop(Instruction)) {
+      // NOTE The noop instruction size is calculated wrong with
+      // BC.computeInstructionSize()
+      // For example: nopw 0x0(%rax,%rax,1) is 9 bytes, but 5 is returned
+      // Also this annotation is used in profile reader to support old .fdata
+      MIB->addAnnotation(Instruction, "Size", static_cast<uint32_t>(Size));
     }
 
     addInstruction(Offset, std::move(Instruction));
@@ -2052,13 +2056,6 @@ bool BinaryFunction::buildCFG(MCPlusBuilder::AllocatorIdTy AllocatorId) {
       }
     }
 
-    // Ignore nops except SDT markers. We use nops to derive alignment of the
-    // next basic block. It will not always work, as some blocks are naturally
-    // aligned, but it's just part of heuristic for block alignment.
-    if (MIB->isNoop(Instr) && !PreserveNops && !IsSDTMarker && !IsLKMarker) {
-      IsLastInstrNop = true;
-      continue;
-    }
     if (!InsertBB) {
       // It must be a fallthrough or unreachable code. Create a new block unless
       // we see an unconditional branch following a conditional one. The latter

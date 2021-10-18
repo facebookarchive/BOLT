@@ -1,7 +1,7 @@
-# Checks that peephole pass works.
+# Checks that shortening pass works.
 
-RUN: %clang %p/Inputs/peephole.s -o %t.exe
-RUN: llvm-bolt %t.exe -o %t -peepholes=shorten
+RUN: %clang %p/Inputs/shortening.s -o %t.exe
+RUN: llvm-bolt %t.exe -o %t
 RUN: llvm-objdump -d --disassemble-symbols=main %t | FileCheck %s
 
 CHECK: main

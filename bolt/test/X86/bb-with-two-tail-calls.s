@@ -21,7 +21,7 @@ _start:
 b:  jb c
 # FDATA: 1 _start #b# 1 _start #c# 2 4
     jmp e
-a:  nop
+a:  inc %eax
 c:  jmp e
 
   .globl e

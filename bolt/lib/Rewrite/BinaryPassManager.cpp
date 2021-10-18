@@ -407,6 +407,10 @@ void BinaryFunctionPassManager::runAllPasses(BinaryContext &BC) {
   if (opts::PrintProfileStats)
     Manager.registerPass(std::make_unique<PrintProfileStats>(NeverPrint));
 
+  Manager.registerPass(std::make_unique<ShortenInstructions>());
+
+  Manager.registerPass(std::make_unique<RemoveNops>(NeverPrint));
+
   Manager.registerPass(std::make_unique<ValidateInternalCalls>(NeverPrint));
 
   Manager.registerPass(std::make_unique<StripRepRet>(NeverPrint),
@@ -449,11 +453,11 @@ void BinaryFunctionPassManager::runAllPasses(BinaryContext &BC) {
   Manager.registerPass(std::make_unique<ThreeWayBranch>(),
                        opts::ThreeWayBranchFlag);
 
-  Manager.registerPass(std::make_unique<ReorderBasicBlocks>(PrintReordered));
-
   Manager.registerPass(
     std::make_unique<EliminateUnreachableBlocks>(PrintUCE),
     opts::EliminateUnreachable);
+
+  Manager.registerPass(std::make_unique<ReorderBasicBlocks>(PrintReordered));
 
   Manager.registerPass(std::make_unique<SplitFunctions>(PrintSplit));
 

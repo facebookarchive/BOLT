@@ -105,7 +105,6 @@ MinBranchClusters("min-branch-clusters",
 
 enum PeepholeOpts : char {
   PEEP_NONE             = 0x0,
-  PEEP_SHORTEN          = 0x1,
   PEEP_DOUBLE_JUMPS     = 0x2,
   PEEP_TAILCALL_TRAPS   = 0x4,
   PEEP_USELESS_BRANCHES = 0x8,
@@ -119,7 +118,6 @@ Peepholes("peepholes",
   cl::value_desc("opt1,opt2,opt3,..."),
   cl::values(
     clEnumValN(PEEP_NONE, "none", "disable peepholes"),
-    clEnumValN(PEEP_SHORTEN, "shorten", "perform instruction shortening"),
     clEnumValN(PEEP_DOUBLE_JUMPS, "double-jumps",
                "remove double jumps when able"),
     clEnumValN(PEEP_TAILCALL_TRAPS, "tailcall-traps", "insert tail call traps"),
@@ -948,10 +946,10 @@ void SimplifyConditionalTailCalls::runOnFunctions(BinaryContext &BC) {
          << ".\n";
 }
 
-uint64_t Peepholes::shortenInstructions(BinaryContext &BC,
-                                        BinaryFunction &Function) {
+uint64_t ShortenInstructions::shortenInstructions(BinaryFunction &Function) {
   MCInst DebugInst;
   uint64_t Count = 0;
+  const BinaryContext &BC = Function.getBinaryContext();
   for (BinaryBasicBlock &BB : Function) {
     for (MCInst &Inst : BB) {
       if (opts::Verbosity > 1) {
@@ -959,7 +957,7 @@ uint64_t Peepholes::shortenInstructions(BinaryContext &BC,
       }
       if (BC.MIB->shortenInstruction(Inst)) {
         if (opts::Verbosity > 1) {
-          outs() << "BOLT-INFO: peephole, shortening:\n"
+          outs() << "BOLT-INFO: shortening:\n"
                  << "BOLT-INFO:    ";
           BC.printInstruction(outs(), DebugInst, 0, &Function);
           outs() << "BOLT-INFO: to:";
@@ -970,6 +968,23 @@ uint64_t Peepholes::shortenInstructions(BinaryContext &BC,
     }
   }
   return Count;
+}
+
+void ShortenInstructions::runOnFunctions(BinaryContext &BC) {
+  std::atomic<uint64_t> ModifiedCounter{0};
+  if (!BC.isX86())
+    return;
+
+  ParallelUtilities::WorkFuncTy WorkFun = [&](BinaryFunction &BF) {
+    ModifiedCounter += shortenInstructions(BF);
+  };
+
+  ParallelUtilities::runOnEachFunction(
+      BC, ParallelUtilities::SchedulingPolicy::SP_TRIVIAL, WorkFun, nullptr,
+      "ShortenInstructions");
+
+  outs() << "BOLT-INFO: " << ModifiedCounter
+         << " instructions were shortened.\n";
 }
 
 void Peepholes::addTailcallTraps(BinaryFunction &Function) {
@@ -1026,8 +1041,6 @@ void Peepholes::runOnFunctions(BinaryContext &BC) {
   for (auto &It : BC.getBinaryFunctions()) {
     BinaryFunction &Function = It.second;
     if (shouldOptimize(Function)) {
-      if (Opts & opts::PEEP_SHORTEN)
-        NumShortened += shortenInstructions(BC, Function);
       if (Opts & opts::PEEP_DOUBLE_JUMPS)
         NumDoubleJumps += fixDoubleJumps(Function, false);
       if (Opts & opts::PEEP_TAILCALL_TRAPS)
@@ -1037,9 +1050,7 @@ void Peepholes::runOnFunctions(BinaryContext &BC) {
       assert(Function.validateCFG());
     }
   }
-  outs() << "BOLT-INFO: Peephole: " << NumShortened
-         << " instructions shortened.\n"
-         << "BOLT-INFO: Peephole: " << NumDoubleJumps
+  outs() << "BOLT-INFO: Peephole: " << NumDoubleJumps
          << " double jumps patched.\n"
          << "BOLT-INFO: Peephole: " << TailCallTraps
          << " tail call traps inserted.\n"
@@ -1770,6 +1781,49 @@ void SpecializeMemcpy1::runOnFunctions(BinaryContext &BC) {
              << " times based on profile.";
     outs() << '\n';
   }
+}
+
+void RemoveNops::runOnBasicBlock(BinaryBasicBlock &BB) {
+  const BinaryContext &BC = BB.getFunction()->getBinaryContext();
+  for (uint64_t I = 0; I < BB.size(); ++I) {
+    MCInst &Inst = BB.getInstructionAtIndex(I);
+    // The offset annotation is saved for SDTMarkers
+    if (BC.MIB->isNoop(Inst) && !BC.MIB->hasAnnotation(Inst, "Offset"))
+      BB.eraseInstructionAtIndex(I--);
+  }
+}
+
+void RemoveNops::runOnFunction(BinaryFunction &BF) {
+  bool BBRemoved = false;
+  for (BinaryBasicBlock *BB : BF.layout()) {
+    runOnBasicBlock(*BB);
+    if (BB->empty() && BB->succ_size() == 1 && !BB->isLandingPad() &&
+        !BB->isEntryPoint()) {
+      BB->markValid(false);
+      BBRemoved = true;
+      BinaryBasicBlock *Succ = BB->getSuccessor();
+      BinaryBasicBlock::BinaryBranchInfo &BI = BB->getBranchInfo(*Succ);
+      for (BinaryBasicBlock *Pred : BB->predecessors())
+        Pred->replaceSuccessor(BB, Succ, BI.Count, BI.MispredictedCount);
+    }
+  }
+
+  if (BBRemoved)
+    BF.eraseInvalidBBs();
+}
+
+void RemoveNops::runOnFunctions(BinaryContext &BC) {
+  ParallelUtilities::WorkFuncTy WorkFun = [&](BinaryFunction &BF) {
+    runOnFunction(BF);
+  };
+
+  ParallelUtilities::PredicateTy SkipFunc = [&](const BinaryFunction &BF) {
+    return BF.shouldPreserveNops();
+  };
+
+  ParallelUtilities::runOnEachFunction(
+      BC, ParallelUtilities::SchedulingPolicy::SP_TRIVIAL, WorkFun, SkipFunc,
+      "RemoveNops");
 }
 
 } // namespace bolt
