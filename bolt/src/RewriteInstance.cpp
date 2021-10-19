@@ -1823,6 +1823,40 @@ int64_t getRelocationAddend(const ELFObjectFileBase *Obj,
   auto *ELF64BE = cast<ELF64BEObjectFile>(Obj);
   return getRelocationAddend(ELF64BE, Rel);
 }
+
+template <typename ELFT>
+uint32_t getRelocationSymbol(const ELFObjectFile<ELFT> *Obj,
+                             const RelocationRef &RelRef) {
+  using ELFShdrTy = typename ELFT::Shdr;
+  uint32_t Symbol = 0;
+  const ELFFile<ELFT> &EF = Obj->getELFFile();
+  DataRefImpl Rel = RelRef.getRawDataRefImpl();
+  const ELFShdrTy *RelocationSection = cantFail(EF.getSection(Rel.d.a));
+  switch (RelocationSection->sh_type) {
+  default:
+    llvm_unreachable("unexpected relocation section type");
+  case ELF::SHT_REL:
+    Symbol = Obj->getRel(Rel)->getSymbol(EF.isMips64EL());
+    break;
+  case ELF::SHT_RELA:
+    Symbol = Obj->getRela(Rel)->getSymbol(EF.isMips64EL());
+    break;
+  }
+
+  return Symbol;
+}
+
+uint32_t getRelocationSymbol(const ELFObjectFileBase *Obj,
+                             const RelocationRef &Rel) {
+  if (auto *ELF32LE = dyn_cast<ELF32LEObjectFile>(Obj))
+    return getRelocationSymbol(ELF32LE, Rel);
+  if (auto *ELF64LE = dyn_cast<ELF64LEObjectFile>(Obj))
+    return getRelocationSymbol(ELF64LE, Rel);
+  if (auto *ELF32BE = dyn_cast<ELF32BEObjectFile>(Obj))
+    return getRelocationSymbol(ELF32BE, Rel);
+  auto *ELF64BE = cast<ELF64BEObjectFile>(Obj);
+  return getRelocationSymbol(ELF64BE, Rel);
+}
 } // anonymous namespace
 
 bool RewriteInstance::analyzeRelocation(
@@ -2217,6 +2251,7 @@ void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
     MCSymbol *Symbol = nullptr;
     uint64_t SymbolAddress = 0;
     const uint64_t Addend = getRelocationAddend(InputFile, Rel);
+    const uint32_t SymbolIdx = getRelocationSymbol(InputFile, Rel);
 
     symbol_iterator SymbolIter = Rel.getSymbol();
     if (SymbolIter != InputFile->symbol_end()) {
@@ -2237,7 +2272,8 @@ void RewriteInstance::readDynamicRelocations(const SectionRef &Section) {
              << " : + 0x" << Twine::utohexstr(Addend) << '\n'
     );
 
-    BC->addDynamicRelocation(Rel.getOffset(), Symbol, Rel.getType(), Addend);
+    BC->addDynamicRelocation(Rel.getOffset(), Symbol, Rel.getType(), Addend,
+                             SymbolIdx);
   }
 }
 
@@ -4895,28 +4931,123 @@ void
 RewriteInstance::patchELFAllocatableRelaSections(ELFObjectFile<ELFT> *File) {
   using Elf_Rela = typename ELFT::Rela;
   raw_fd_ostream &OS = Out->os();
+  const ELFFile<ELFT> &EF = File->getELFFile();
 
-  for (BinarySection &RelaSection : BC->allocatableRelaSections()) {
-    for (const RelocationRef &Rel : RelaSection.getSectionRef().relocations()) {
-      uint64_t RType = Rel.getType();
-      if (Relocation::isRelative(RType) || Relocation::isIRelative(RType)) {
-        DataRefImpl DRI = Rel.getRawDataRefImpl();
-        const Elf_Rela *RelA = File->getRela(DRI);
-        auto Address = RelA->r_addend;
-        uint64_t NewAddress = getNewFunctionAddress(Address);
-        if (!NewAddress)
+  uint64_t RelDynOffset = 0, RelDynEndOffset = 0;
+  uint64_t RelPltOffset = 0, RelPltEndOffset = 0;
+
+  auto getRelOffset = [&](uint64_t Type) -> uint64_t & {
+    if (Relocation::isJmpRel(Type))
+      return RelPltOffset;
+    return RelDynOffset;
+  };
+
+  auto getRelEndOffset = [&](uint64_t Type) -> uint64_t & {
+    if (Relocation::isJmpRel(Type))
+      return RelPltEndOffset;
+    return RelDynEndOffset;
+  };
+
+  auto setSectionFileOffsets = [&](uint64_t Address, uint64_t &Start,
+                                   uint64_t &End) {
+    ErrorOr<BinarySection &> Section = BC->getSectionForAddress(Address);
+    StringRef SectionContents =
+        cantFail(Section->getSectionRef().getContents());
+    Start = SectionContents.data() - File->getData().data();
+    End = Start + Section->getSize();
+  };
+
+  if (!DynamicRelocationsAddress && !PLTRelocationsAddress)
+    return;
+
+  if (DynamicRelocationsAddress)
+    setSectionFileOffsets(*DynamicRelocationsAddress, RelDynOffset,
+                          RelDynEndOffset);
+
+  if (PLTRelocationsAddress)
+    setSectionFileOffsets(*PLTRelocationsAddress, RelPltOffset,
+                          RelPltEndOffset);
+
+  DynamicRelativeRelocationsCount = 0;
+
+  auto writeRela = [&OS](const Elf_Rela *RelA, uint64_t &Offset) {
+    OS.pwrite(reinterpret_cast<const char *>(RelA), sizeof(*RelA), Offset);
+    Offset += sizeof(*RelA);
+  };
+
+  auto writeRelocations = [&](bool PatchRelative) {
+    for (BinarySection &Section : BC->allocatableSections()) {
+      for (const Relocation &Rel : Section.dynamicRelocations()) {
+        bool IsRelative = Rel.isRelative();
+        if ((PatchRelative && !IsRelative) || (!PatchRelative && IsRelative))
           continue;
-        LLVM_DEBUG(dbgs() << "BOLT-DEBUG: patching (I)RELATIVE "
-                          << RelaSection.getName() << " entry 0x"
-                          << Twine::utohexstr(Address) << " with 0x"
-                          << Twine::utohexstr(NewAddress) << '\n');
-        Elf_Rela NewRelA = *RelA;
-        NewRelA.r_addend = NewAddress;
-        OS.pwrite(reinterpret_cast<const char *>(&NewRelA), sizeof(NewRelA),
-          reinterpret_cast<const char *>(RelA) - File->getData().data());
+
+        if (IsRelative)
+          ++DynamicRelativeRelocationsCount;
+
+        Elf_Rela NewRelA;
+        uint64_t SectionAddress = Section.getOutputAddress();
+        SectionAddress =
+            SectionAddress == 0 ? Section.getAddress() : SectionAddress;
+        uint64_t Addend = Rel.Addend;
+        uint32_t SymbolIdx = (uint32_t)Rel.Value;
+        if (!SymbolIdx) {
+          if (Rel.Symbol) {
+            // This is the case when we are creating relocation by ourselves
+            // during bolt work
+            ErrorOr<uint64_t> Address = BC->getSymbolValue(*Rel.Symbol);
+            if (Address)
+              Addend += getNewFunctionOrDataAddress(*Address);
+          } else {
+            // Usually this case is used for R_*_RELATIVE relocations
+            uint64_t Address = getNewFunctionOrDataAddress(Addend);
+            if (Address)
+              Addend = Address;
+          }
+        }
+
+        NewRelA.setSymbolAndType(SymbolIdx, Rel.Type, EF.isMips64EL());
+        NewRelA.r_offset = SectionAddress + Rel.Offset;
+        NewRelA.r_addend = Addend;
+
+        uint64_t &Offset = getRelOffset(Rel.Type);
+        uint64_t &EndOffset = getRelEndOffset(Rel.Type);
+        if (!Offset || !EndOffset) {
+          errs() << "BOLT_ERROR: Invalid offsets for dynamic relocation\n";
+          exit(1);
+        }
+
+        if (Offset + sizeof(NewRelA) > EndOffset) {
+          errs() << "BOLT_ERROR: Offset overflow for dynamic relocation\n";
+          exit(1);
+        }
+
+        writeRela(&NewRelA, Offset);
       }
     }
-  }
+  };
+
+  // The dynamic linker expects R_*_RELATIVE relocations to be emitted first
+  writeRelocations(/* PatchRelative */ true);
+  writeRelocations(/* PatchRelative */ false);
+
+  auto fillNone = [&](uint64_t &Offset, uint64_t EndOffset) {
+    if (!Offset)
+      return;
+
+    typename ELFObjectFile<ELFT>::Elf_Rela RelA;
+    RelA.setSymbolAndType(0, Relocation::getNone(), EF.isMips64EL());
+    RelA.r_offset = 0;
+    RelA.r_addend = 0;
+    while (Offset < EndOffset)
+      writeRela(&RelA, Offset);
+
+    assert(Offset == EndOffset && "Unexpected section overflow");
+  };
+
+  // Fill the rest of the sections with R_*_NONE relocations
+  fillNone(RelDynOffset, RelDynEndOffset);
+  fillNone(RelPltOffset, RelPltEndOffset);
 }
 
 template <typename ELFT>
@@ -4932,7 +5063,8 @@ void RewriteInstance::patchELFGOT(ELFObjectFile<ELFT> *File) {
     }
   }
   if (!GOTSection.getObject()) {
-    errs() << "BOLT-INFO: no .got section found\n";
+    if (!BC->IsStaticExecutable)
+      errs() << "BOLT-INFO: no .got section found\n";
     return;
   }
 
@@ -4989,6 +5121,9 @@ void RewriteInstance::patchELFDynamic(ELFObjectFile<ELFT> *File) {
     switch (Dyn.d_tag) {
     default:
       ShouldPatch = false;
+      break;
+    case ELF::DT_RELACOUNT:
+      NewDE.d_un.d_val = DynamicRelativeRelocationsCount;
       break;
     case ELF::DT_INIT:
     case ELF::DT_FINI:
@@ -5096,14 +5231,21 @@ void RewriteInstance::readELFDynamic(ELFObjectFile<ELFT> *File) {
     case ELF::DT_PLTRELSZ:
       PLTRelocationsSize = Dyn.getVal();
       break;
+    case ELF::DT_RELACOUNT:
+      DynamicRelativeRelocationsCount = Dyn.getVal();
+      break;
     }
   }
 
-  if (!DynamicRelocationsAddress)
+  if (!DynamicRelocationsAddress || !DynamicRelocationsSize) {
+    DynamicRelocationsAddress.reset();
     DynamicRelocationsSize = 0;
+  }
 
-  if (!PLTRelocationsAddress)
+  if (!PLTRelocationsAddress || !PLTRelocationsSize) {
+    PLTRelocationsAddress.reset();
     PLTRelocationsSize = 0;
+  }
 }
 
 
@@ -5115,6 +5257,17 @@ uint64_t RewriteInstance::getNewFunctionAddress(uint64_t OldAddress) {
   assert(!Function->isFragment() && "cannot get new address for a fragment");
 
   return Function->getOutputAddress();
+}
+
+uint64_t RewriteInstance::getNewFunctionOrDataAddress(uint64_t OldAddress) {
+  if (uint64_t Function = getNewFunctionAddress(OldAddress))
+    return Function;
+
+  const BinaryData *BD = BC->getBinaryDataAtAddress(OldAddress);
+  if (BD && BD->isMoved())
+    return BD->getOutputAddress();
+
+  return 0;
 }
 
 void RewriteInstance::rewriteFile() {
@@ -5296,13 +5449,13 @@ void RewriteInstance::rewriteFile() {
   // Copy non-allocatable sections once allocatable part is finished.
   rewriteNoteSections();
 
-  // Patch dynamic section/segment.
-  patchELFDynamic();
-
   if (BC->HasRelocations) {
     patchELFAllocatableRelaSections();
     patchELFGOT();
   }
+
+  // Patch dynamic section/segment.
+  patchELFDynamic();
 
   // Update ELF book-keeping info.
   patchELFSectionHeaderTable();

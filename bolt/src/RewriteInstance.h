@@ -206,6 +206,10 @@ private:
   /// \p OldAddress address in the original binary.
   uint64_t getNewFunctionAddress(uint64_t OldAddress);
 
+  /// Return address of a function or moved data in the new binary
+  /// corresponding to \p OldAddress address in the original binary.
+  uint64_t getNewFunctionOrDataAddress(uint64_t OldAddress);
+
   /// Return value for the symbol \p Name in the output.
   uint64_t getNewValueForSymbol(const StringRef Name);
 
@@ -433,6 +437,7 @@ private:
   /// Location and size of dynamic relocations.
   Optional<uint64_t> DynamicRelocationsAddress;
   uint64_t DynamicRelocationsSize{0};
+  uint64_t DynamicRelativeRelocationsCount{0};
 
   /// PLT relocations are special kind of dynamic relocations stored separately.
   Optional<uint64_t> PLTRelocationsAddress;

@@ -44,8 +44,10 @@ struct Relocation {
   /// value of this relocation.
   uint64_t Addend;
 
-  /// The computed relocation value extracted from the binary file.
-  /// Used to validate relocation correctness.
+  /// The computed relocation value extracted from the binary file
+  /// for static relocations, that is used to validate relocation correctness.
+  /// The dynamic relocations stores the symbol value used to patch dynamic
+  /// relocations.
   uint64_t Value;
 
   /// Return size of the given relocation \p Type.
@@ -62,6 +64,9 @@ struct Relocation {
   /// on the relocation value. For X86, we limit to sign extending the value
   /// if necessary.
   static uint64_t extractValue(uint64_t Type, uint64_t Contents, uint64_t PC);
+
+  /// Retyrn true of relocation should be locationed in jmprel section
+  static bool isJmpRel(uint64_t Type);
 
   /// Return true if relocation type is PC-relative. Return false otherwise.
   static bool isPCRelative(uint64_t Type);
@@ -84,6 +89,12 @@ struct Relocation {
   /// Return true if relocation type is for thread local storage.
   static bool isTLS(uint64_t Type);
 
+  /// Return code for a NONE relocation
+  static uint64_t getNone();
+
+  /// Return code for RELATIVE relocation
+  static uint64_t getRelative();
+
   /// Return code for a PC-relative 4-byte relocation
   static uint64_t getPC32();
 
@@ -93,6 +104,11 @@ struct Relocation {
   /// Return true if this relocation is PC-relative. Return false otherwise.
   bool isPCRelative() const {
     return isPCRelative(Type);
+  }
+
+  /// Return true if this relocation is R_*_RELATIVE type. Return false otherwise.
+  bool isRelative() const {
+    return isRelative(Type);
   }
 
   /// Emit relocation at a current \p Streamer' position. The caller is
