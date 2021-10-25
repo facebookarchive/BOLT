@@ -1,0 +1,64 @@
+# Native x86_64 builder
+FROM ubuntu:20.04 AS builder
+
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+ENV TRIPLE=aarch64-linux-gnu
+ENV GCCVER=10
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates git \
+      build-essential cmake ninja-build python3 python3-psutil \
+      gcc-$GCCVER-$TRIPLE g++-$GCCVER-$TRIPLE binutils-$TRIPLE && \
+    rm -rf /var/lib/apt/lists
+
+WORKDIR /home/bolt
+
+COPY . llvm-bolt
+
+# Build native llvm-tblgen and clang-tblgen
+WORKDIR build-host
+
+RUN cmake -G Ninja ../llvm-bolt/llvm -DLLVM_ENABLE_PROJECTS=clang && \
+    ninja clang-tblgen llvm-tblgen
+
+# Build cross-compiled AArch64 BOLT
+WORKDIR ../build
+
+RUN cmake -G Ninja ../llvm-bolt/llvm \
+      -DCMAKE_SYSTEM_NAME=Linux \
+      -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+      -DCMAKE_CROSSCOMPILING=TRUE \
+      -DCMAKE_C_COMPILER=/usr/bin/$TRIPLE-gcc-$GCCVER \
+      -DCMAKE_CXX_COMPILER=/usr/bin/$TRIPLE-g++-$GCCVER \
+      -DCMAKE_FIND_ROOT_PATH=/usr/$TRIPLE \
+      -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+      -DLLVM_TABLEGEN=/home/bolt/build-host/bin/llvm-tblgen \
+      -DCLANG_TABLEGEN=/home/bolt/build-host/bin/clang-tblgen \
+      -DLLVM_ENABLE_PROJECTS="bolt;clang;lld" \
+      -DLLVM_TARGETS_TO_BUILD="AArch64" \
+      -DLLVM_TARGET_ARCH=AArch64 \
+      -DLLVM_DEFAULT_TARGET_TRIPLE=$TRIPLE \
+      -DCMAKE_BUILD_TYPE=Release \
+      -DLLVM_ENABLE_ASSERTIONS=ON && \
+    ninja llvm-bolt llvm-mc clang lld llvm-objdump FileCheck count \
+      not llc llvm-dwarfdump llvm-config perf2bolt merge-fdata \
+      llvm-nm llvm-objdump llvm-readobj yaml2obj llvm-strip \
+      llvm-dwarfdump llvm-objcopy llvm-boltdiff llvm-readelf
+
+# Emulated aarch64 test runner
+FROM --platform=linux/arm64 ubuntu:20.04 AS runner
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      python3 python3-psutil build-essential && \
+    rm -rf /var/lib/apt/lists
+
+COPY --from=builder /home/bolt/ /home/bolt
+
+# Run tests
+WORKDIR /home/bolt/build
+
+RUN bin/llvm-lit -sv tools/bolt/test

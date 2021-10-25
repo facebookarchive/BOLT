@@ -21,4 +21,4 @@ jobs:
       - uses: docker/setup-qemu-action@v1
       - uses: docker/setup-buildx-action@v1
       - name: Build Docker image and test (aarch64)
-        run: docker buildx build . --file .github/workflows/Dockerfile --platform linux/arm64
+        run: docker buildx build . --file .github/workflows/Dockerfile.aarch64
