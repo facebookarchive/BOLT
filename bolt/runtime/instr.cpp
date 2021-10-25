@@ -611,7 +611,7 @@ bool parseAddressRange(const char *Str, uint64_t &StartAddress,
 /// /proc/self/map_files
 static char *getBinaryPath() {
   const uint32_t BufSize = 1024;
-  const uint32_t NameMax = 256;
+  const uint32_t NameMax = 4096;
   const char DirPath[] = "/proc/self/map_files/";
   static char TargetPath[NameMax] = {};
   char Buf[BufSize];
@@ -641,7 +641,7 @@ static char *getBinaryPath() {
         continue;
       if (CurAddr < StartAddress || CurAddr > EndAddress)
         continue;
-      char FindBuf[NameMax];
+      static char FindBuf[NameMax];
       char *C = strCopy(FindBuf, DirPath, NameMax);
       C = strCopy(C, d->d_name, NameMax - (C - FindBuf));
       *C = '\0';
