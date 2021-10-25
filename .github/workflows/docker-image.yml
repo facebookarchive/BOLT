@@ -7,10 +7,18 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-x86_64:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
-    - name: Build the Docker image and test
+    - name: Build Docker image and test (x86_64)
       run: docker build . --file .github/workflows/Dockerfile --tag ubuntu-bolt:$(date +%s)
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: docker/setup-qemu-action@v1
+      - uses: docker/setup-buildx-action@v1
+      - name: Build Docker image and test (aarch64)
+        run: docker buildx build . --file .github/workflows/Dockerfile --platform linux/arm64
