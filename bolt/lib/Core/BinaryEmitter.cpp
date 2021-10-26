@@ -28,6 +28,7 @@ using namespace bolt;
 
 namespace opts {
 
+extern cl::opt<unsigned> AlignFunctions;
 extern cl::opt<JumpTableSupportLevel> JumpTables;
 extern cl::opt<bool> PreserveBlocksAlignment;
 
@@ -290,6 +291,12 @@ bool BinaryEmitter::emitFunction(BinaryFunction &Function, bool EmitColdPart) {
   Streamer.SwitchSection(Section);
   Section->setHasInstructions(true);
   BC.Ctx->addGenDwarfSection(Section);
+
+  // Set section alignment to the maximum possible object alignment.
+  // We need this to support LongJmp and other passes that calculates
+  // tentative layout.
+  if (Section->getAlignment() == 1)
+    Section->setAlignment(Align(opts::AlignFunctions));
 
   if (BC.HasRelocations) {
     Streamer.emitCodeAlignment(BinaryFunction::MinAlign, &*BC.STI);

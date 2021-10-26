@@ -165,6 +165,12 @@ void AlignerPass::runOnFunctions(BinaryContext &BC) {
   if (!BC.HasRelocations)
     return;
 
+  if (BC.PageAlign < opts::AlignFunctions) {
+    dbgs()
+        << "BOLT-INFO: Adjusting PageSize to the maximum function alignment\n";
+    BC.PageAlign = opts::AlignFunctions;
+  }
+
   AlignHistogram.resize(opts::BlockAlignment);
 
   ParallelUtilities::WorkFuncTy WorkFun = [&](BinaryFunction &BF) {

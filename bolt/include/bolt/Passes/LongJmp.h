@@ -31,6 +31,10 @@ namespace bolt {
 /// 64-bit range, we guarantee it can reach any code location.
 ///
 class LongJmpPass : public BinaryFunctionPass {
+  static const int NotRelaxed = 0;    // No relaxations were made
+  static const int InstrRelaxed = 1;  // Only instruction relaxations were made
+  static const int StubsInserted = 2; // Stubs were inserted
+
   /// Used to implement stub grouping (re-using a stub from one function into
   /// another)
   using StubTy = std::pair<uint64_t, BinaryBasicBlock *>;
@@ -127,9 +131,21 @@ class LongJmpPass : public BinaryFunctionPass {
   /// Helper to identify whether \p Inst is branching to a stub
   bool usesStub(const BinaryFunction &Func, const MCInst &Inst) const;
 
+  /// Helper function to return delta offset between  \p DotAddress and target
+  uint64_t getTargetOffset(const BinaryContext &BC, uint64_t InstSize,
+                           uint64_t TargetAddress, uint64_t DotAddress) const;
+  uint64_t getTargetOffset(const BinaryFunction &Func, uint64_t InstSize,
+                           const MCSymbol *TgtSym, uint64_t DotAddress) const;
+  uint64_t getTargetOffset(const BinaryFunction &Func, const MCInst &Inst,
+                           uint64_t DotAddress) const;
+
   /// True if Inst is a branch that is out of range
   bool needsStub(const BinaryBasicBlock &BB, const MCInst &Inst,
                  uint64_t DotAddress) const;
+
+  /// Relax instruction \p II in \p BB in-place if necessary
+  bool relaxInstruction(BinaryBasicBlock &BB, BinaryBasicBlock::iterator &II,
+                        uint64_t DotAddress);
 
   /// Expand the range of the stub in StubBB if necessary
   bool relaxStub(BinaryBasicBlock &StubBB);
@@ -139,7 +155,7 @@ class LongJmpPass : public BinaryFunctionPass {
                             const BinaryBasicBlock *TgtBB) const;
 
   /// Relax function by adding necessary stubs or relaxing existing stubs
-  bool relax(BinaryFunction &BF);
+  int relax(BinaryFunction &BF);
 
 public:
   /// BinaryPass public interface
