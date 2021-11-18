@@ -149,6 +149,7 @@ size_t getSizeForTypeAArch64(uint64_t Type) {
   case ELF::R_AARCH64_MOVW_UABS_G2_NC:
   case ELF::R_AARCH64_MOVW_UABS_G3:
   case ELF::R_AARCH64_ABS32:
+  case ELF::R_AARCH64_P32_ADR_PREL_LO21:
     return 4;
   case ELF::R_AARCH64_ABS64:
     return 8;
