@@ -13,6 +13,8 @@ WORKDIR /home/bolt
 
 COPY . llvm-bolt
 
+RUN git clone https://github.com/rafaelauler/bolt-tests bolt-tests
+
 WORKDIR build
 
 RUN cmake -G Ninja ../llvm-bolt/llvm \
@@ -21,9 +23,11 @@ RUN cmake -G Ninja ../llvm-bolt/llvm \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_ENABLE_ASSERTIONS=ON \
       -DCMAKE_EXE_LINKER_FLAGS="-Wl,--push-state -Wl,-whole-archive -ljemalloc_pic -Wl,--pop-state -lpthread -lstdc++ -lm -ldl" \
-      -DCMAKE_INSTALL_PREFIX=/home/bolt/install
+      -DCMAKE_INSTALL_PREFIX=/home/bolt/install \
+      -DLLVM_EXTERNAL_PROJECTS="bolttests" \
+      -DLLVM_EXTERNAL_BOLTTESTS_SOURCE_DIR=$(pwd)/../bolt-tests
 
-RUN ninja check-bolt && \
+RUN ninja check-bolt check-large-bolt && \
     ninja install-llvm-bolt install-perf2bolt install-merge-fdata \
       install-llvm-boltdiff install-bolt_rt
 

@@ -16,6 +16,8 @@ WORKDIR /home/bolt
 
 COPY . llvm-bolt
 
+RUN git clone https://github.com/rafaelauler/bolt-tests bolt-tests
+
 # Build native llvm-tblgen and clang-tblgen
 WORKDIR build-host
 
@@ -40,7 +42,9 @@ RUN cmake -G Ninja ../llvm-bolt/llvm \
       -DLLVM_TARGET_ARCH=AArch64 \
       -DLLVM_DEFAULT_TARGET_TRIPLE=$TRIPLE \
       -DCMAKE_BUILD_TYPE=Release \
-      -DLLVM_ENABLE_ASSERTIONS=ON && \
+      -DLLVM_ENABLE_ASSERTIONS=ON \
+      -DLLVM_EXTERNAL_PROJECTS="bolttests" \
+      -DLLVM_EXTERNAL_BOLTTESTS_SOURCE_DIR=$(pwd)/../bolt-tests && \
     ninja llvm-bolt llvm-mc clang lld llvm-objdump FileCheck count \
       not llc llvm-dwarfdump llvm-config perf2bolt merge-fdata \
       llvm-nm llvm-objdump llvm-readobj yaml2obj llvm-strip \
@@ -61,4 +65,4 @@ COPY --from=builder /home/bolt/ /home/bolt
 # Run tests
 WORKDIR /home/bolt/build
 
-RUN bin/llvm-lit -sv tools/bolt/test
+RUN bin/llvm-lit -sv tools/bolt/test tools/bolttests
