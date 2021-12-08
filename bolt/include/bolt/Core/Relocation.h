@@ -57,6 +57,9 @@ struct Relocation {
   /// Handle special cases when relocation should not be processed by bolt
   static bool skipRelocationProcess(uint64_t Type, uint64_t Contents);
 
+  // Change current relocated value depending on relocation type.
+  static uint64_t getValue(uint64_t Type, uint64_t Contents, uint64_t PC);
+
   /// Extract current relocated value from binary contents. This is used for
   /// RISC architectures where values are encoded in specific bits depending
   /// on the relocation value. For X86, we limit to sign extending the value
