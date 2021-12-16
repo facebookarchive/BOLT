@@ -2130,6 +2130,9 @@ DataAggregator::parseNameBuildIDPair() {
   if (std::error_code EC = BuildIDStr.getError())
     return NoneType();
 
+  // Consume aligned-space in short build-id length
+  while (checkAndConsumeFS()) {}
+
   ErrorOr<StringRef> NameStr = parseString(FieldSeparator, true);
   if (std::error_code EC = NameStr.getError())
     return NoneType();
