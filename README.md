@@ -1,5 +1,7 @@
 # The LLVM Compiler Infrastructure
 
+[![Support Ukraine](https://img.shields.io/badge/Support-Ukraine-FFD500?style=flat&labelColor=005BBB)](https://opensource.fb.com/support-ukraine)
+
 This directory and its sub-directories contain source code for LLVM,
 a toolkit for the construction of highly optimized compilers,
 optimizers, and run-time environments.
