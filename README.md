@@ -1,3 +1,7 @@
+# BOLT project is now part of [LLVM](https://github.com/llvm/llvm-project)!
+This repository will not be updated.
+Please navigate to https://github.com/llvm/llvm-project/tree/main/bolt for up-to-date code and instructions.
+
 # The LLVM Compiler Infrastructure
 
 This directory and its sub-directories contain source code for LLVM,
