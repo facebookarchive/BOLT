@@ -3,8 +3,11 @@ on:
   issues:
     types: ['opened']
 
+permissions: {}
 jobs:
   automate-issues-labels:
+    permissions:
+      issues: write # to label issues (andymckay/labeler)
     runs-on: ubuntu-latest
     if: github.repository == 'llvm/llvm-project'
     steps:
