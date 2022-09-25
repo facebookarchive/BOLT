@@ -5,6 +5,7 @@ on:
     types:
       - labeled
 
+permissions: {}
 jobs:
   auto-subscribe:
     runs-on: ubuntu-latest
